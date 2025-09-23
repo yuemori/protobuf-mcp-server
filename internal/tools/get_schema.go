@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bufbuild/protocompile/linker"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
-	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // GetSchemaTool implements the get_schema MCP tool using mcp-go
@@ -89,9 +90,9 @@ type FieldInfo struct {
 	Name        string       `json:"name"`
 	Number      int32        `json:"number"`
 	Type        string       `json:"type"`
-	Label       string       `json:"label"`
+	Optional    bool         `json:"optional"`
+	Repeated    bool         `json:"repeated"`
 	Description string       `json:"description"`
-	Default     string       `json:"default,omitempty"`
 	Options     []OptionInfo `json:"options,omitempty"`
 }
 
@@ -229,7 +230,7 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 	}
 
 	// Process each file in the compiled protos
-	for _, file := range project.CompiledProtos.File {
+	for _, file := range project.CompiledProtos {
 		// Add file information if requested
 		if params.IncludeFileInfo {
 			fileInfo := t.convertFileToInfo(file)
@@ -238,7 +239,8 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 		}
 
 		// Process messages
-		for _, message := range file.MessageType {
+		for i := 0; i < file.Messages().Len(); i++ {
+			message := file.Messages().Get(i)
 			if t.shouldIncludeMessage(message, params.MessageTypes) {
 				messageInfo := t.convertMessageToInfo(message, file)
 				schemaInfo.Messages = append(schemaInfo.Messages, messageInfo)
@@ -248,7 +250,8 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 		}
 
 		// Process services
-		for _, service := range file.Service {
+		for i := 0; i < file.Services().Len(); i++ {
+			service := file.Services().Get(i)
 			if t.shouldIncludeService(service, params.ServiceTypes) {
 				serviceInfo := t.convertServiceToInfo(service, file)
 				schemaInfo.Services = append(schemaInfo.Services, serviceInfo)
@@ -258,7 +261,8 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 		}
 
 		// Process enums
-		for _, enum := range file.EnumType {
+		for i := 0; i < file.Enums().Len(); i++ {
+			enum := file.Enums().Get(i)
 			if t.shouldIncludeEnum(enum, params.EnumTypes) {
 				enumInfo := t.convertEnumToInfo(enum, file)
 				schemaInfo.Enums = append(schemaInfo.Enums, enumInfo)
@@ -272,12 +276,12 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 }
 
 // shouldIncludeMessage checks if a message should be included based on filters
-func (t *GetSchemaTool) shouldIncludeMessage(message *descriptorpb.DescriptorProto, filters []string) bool {
+func (t *GetSchemaTool) shouldIncludeMessage(message protoreflect.MessageDescriptor, filters []string) bool {
 	if len(filters) == 0 {
 		return true
 	}
 	for _, filter := range filters {
-		if message.GetName() == filter {
+		if string(message.Name()) == filter {
 			return true
 		}
 	}
@@ -285,12 +289,12 @@ func (t *GetSchemaTool) shouldIncludeMessage(message *descriptorpb.DescriptorPro
 }
 
 // shouldIncludeService checks if a service should be included based on filters
-func (t *GetSchemaTool) shouldIncludeService(service *descriptorpb.ServiceDescriptorProto, filters []string) bool {
+func (t *GetSchemaTool) shouldIncludeService(service protoreflect.ServiceDescriptor, filters []string) bool {
 	if len(filters) == 0 {
 		return true
 	}
 	for _, filter := range filters {
-		if service.GetName() == filter {
+		if string(service.Name()) == filter {
 			return true
 		}
 	}
@@ -298,12 +302,12 @@ func (t *GetSchemaTool) shouldIncludeService(service *descriptorpb.ServiceDescri
 }
 
 // shouldIncludeEnum checks if an enum should be included based on filters
-func (t *GetSchemaTool) shouldIncludeEnum(enum *descriptorpb.EnumDescriptorProto, filters []string) bool {
+func (t *GetSchemaTool) shouldIncludeEnum(enum protoreflect.EnumDescriptor, filters []string) bool {
 	if len(filters) == 0 {
 		return true
 	}
 	for _, filter := range filters {
-		if enum.GetName() == filter {
+		if string(enum.Name()) == filter {
 			return true
 		}
 	}
@@ -311,44 +315,46 @@ func (t *GetSchemaTool) shouldIncludeEnum(enum *descriptorpb.EnumDescriptorProto
 }
 
 // convertMessageToInfo converts a protobuf message to MessageInfo
-func (t *GetSchemaTool) convertMessageToInfo(message *descriptorpb.DescriptorProto, file *descriptorpb.FileDescriptorProto) MessageInfo {
+func (t *GetSchemaTool) convertMessageToInfo(message protoreflect.MessageDescriptor, file linker.File) MessageInfo {
 	// Convert fields
-	fields := make([]FieldInfo, 0, len(message.Field))
-	for _, field := range message.Field {
+	fields := make([]FieldInfo, 0, message.Fields().Len())
+	for i := 0; i < message.Fields().Len(); i++ {
+		field := message.Fields().Get(i)
 		fieldInfo := FieldInfo{
-			Name:        field.GetName(),
-			Number:      field.GetNumber(),
-			Type:        field.GetTypeName(),
-			Label:       field.GetLabel().String(),
-			Description: "", // TODO: Extract from field options
-			Default:     field.GetDefaultValue(),
+			Name:        string(field.Name()),
+			Number:      int32(field.Number()),
+			Type:        field.Kind().String(),
+			Optional:    field.HasPresence(),
+			Repeated:    field.Cardinality() == protoreflect.Repeated,
+			Description: "",             // TODO: Extract from field options
 			Options:     []OptionInfo{}, // TODO: Extract field options
 		}
 		fields = append(fields, fieldInfo)
 	}
 
 	return MessageInfo{
-		Name:        message.GetName(),
-		FullName:    message.GetName(), // TODO: Add package prefix
+		Name:        string(message.Name()),
+		FullName:    string(message.FullName()),
 		Fields:      fields,
-		File:        file.GetName(),
-		Package:     file.GetPackage(),
+		File:        string(file.Name()),
+		Package:     string(file.Package().Name()),
 		Description: "",             // TODO: Extract from message options
 		Options:     []OptionInfo{}, // TODO: Extract message options
 	}
 }
 
 // convertServiceToInfo converts a protobuf service to ServiceInfo
-func (t *GetSchemaTool) convertServiceToInfo(service *descriptorpb.ServiceDescriptorProto, file *descriptorpb.FileDescriptorProto) ServiceInfo {
+func (t *GetSchemaTool) convertServiceToInfo(service protoreflect.ServiceDescriptor, file linker.File) ServiceInfo {
 	// Convert methods
-	methods := make([]MethodInfo, 0, len(service.Method))
-	for _, method := range service.Method {
+	methods := make([]MethodInfo, 0, service.Methods().Len())
+	for i := 0; i < service.Methods().Len(); i++ {
+		method := service.Methods().Get(i)
 		methodInfo := MethodInfo{
-			Name:            method.GetName(),
-			InputType:       method.GetInputType(),
-			OutputType:      method.GetOutputType(),
-			ClientStreaming: method.GetClientStreaming(),
-			ServerStreaming: method.GetServerStreaming(),
+			Name:            string(method.Name()),
+			InputType:       string(method.Input().FullName()),
+			OutputType:      string(method.Output().FullName()),
+			ClientStreaming: method.IsStreamingClient(),
+			ServerStreaming: method.IsStreamingServer(),
 			Description:     "",             // TODO: Extract from method options
 			Options:         []OptionInfo{}, // TODO: Extract method options
 		}
@@ -356,24 +362,25 @@ func (t *GetSchemaTool) convertServiceToInfo(service *descriptorpb.ServiceDescri
 	}
 
 	return ServiceInfo{
-		Name:        service.GetName(),
-		FullName:    service.GetName(), // TODO: Add package prefix
+		Name:        string(service.Name()),
+		FullName:    string(service.FullName()),
 		Methods:     methods,
-		File:        file.GetName(),
-		Package:     file.GetPackage(),
+		File:        string(file.Name()),
+		Package:     string(file.Package().Name()),
 		Description: "",             // TODO: Extract from service options
 		Options:     []OptionInfo{}, // TODO: Extract service options
 	}
 }
 
 // convertEnumToInfo converts a protobuf enum to EnumInfo
-func (t *GetSchemaTool) convertEnumToInfo(enum *descriptorpb.EnumDescriptorProto, file *descriptorpb.FileDescriptorProto) EnumInfo {
+func (t *GetSchemaTool) convertEnumToInfo(enum protoreflect.EnumDescriptor, file linker.File) EnumInfo {
 	// Convert enum values
-	values := make([]EnumValueInfo, 0, len(enum.Value))
-	for _, value := range enum.Value {
+	values := make([]EnumValueInfo, 0, enum.Values().Len())
+	for i := 0; i < enum.Values().Len(); i++ {
+		value := enum.Values().Get(i)
 		valueInfo := EnumValueInfo{
-			Name:        value.GetName(),
-			Number:      value.GetNumber(),
+			Name:        string(value.Name()),
+			Number:      int32(value.Number()),
 			Description: "",             // TODO: Extract from value options
 			Options:     []OptionInfo{}, // TODO: Extract value options
 		}
@@ -381,22 +388,22 @@ func (t *GetSchemaTool) convertEnumToInfo(enum *descriptorpb.EnumDescriptorProto
 	}
 
 	return EnumInfo{
-		Name:        enum.GetName(),
-		FullName:    enum.GetName(), // TODO: Add package prefix
+		Name:        string(enum.Name()),
+		FullName:    string(enum.FullName()),
 		Values:      values,
-		File:        file.GetName(),
-		Package:     file.GetPackage(),
+		File:        string(file.Name()),
+		Package:     string(file.Package().Name()),
 		Description: "",             // TODO: Extract from enum options
 		Options:     []OptionInfo{}, // TODO: Extract enum options
 	}
 }
 
 // convertFileToInfo converts a protobuf file to FileInfo
-func (t *GetSchemaTool) convertFileToInfo(file *descriptorpb.FileDescriptorProto) FileInfo {
+func (t *GetSchemaTool) convertFileToInfo(file linker.File) FileInfo {
 	return FileInfo{
-		Name:         file.GetName(),
-		Package:      file.GetPackage(),
-		Dependencies: file.GetDependency(),
+		Name:         string(file.Name()),
+		Package:      string(file.Package()),
+		Dependencies: []string{},     // TODO: Extract dependencies
 		Description:  "",             // TODO: Extract from file options
 		Options:      []OptionInfo{}, // TODO: Extract file options
 	}

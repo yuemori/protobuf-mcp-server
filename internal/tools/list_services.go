@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // ListServicesTool implements the list_services MCP tool using mcp-go
@@ -94,26 +95,29 @@ func (t *ListServicesTool) Handle(ctx context.Context, req mcp.CallToolRequest) 
 }
 
 // convertServiceToInfo converts a protobuf service to ServiceInfo
-func (t *ListServicesTool) convertServiceToInfo(service *descriptorpb.ServiceDescriptorProto) ServiceInfo {
+func (t *ListServicesTool) convertServiceToInfo(service protoreflect.ServiceDescriptor) ServiceInfo {
 	// Convert methods
-	methods := make([]MethodInfo, 0, len(service.Method))
-	for _, method := range service.Method {
+	methods := make([]MethodInfo, 0, service.Methods().Len())
+
+	for i := 0; i < service.Methods().Len(); i++ {
+		method := service.Methods().Get(i)
 		methodInfo := MethodInfo{
-			Name:            method.GetName(),
-			InputType:       method.GetInputType(),
-			OutputType:      method.GetOutputType(),
-			ClientStreaming: method.GetClientStreaming(),
-			ServerStreaming: method.GetServerStreaming(),
-			Description:     "", // TODO: Extract description from method options
+			Name:            string(method.Name()),
+			InputType:       string(method.Input().Name()),
+			OutputType:      string(method.Output().Name()),
+			ClientStreaming: method.IsStreamingClient(),
+			ServerStreaming: method.IsStreamingServer(),
+			Description:     strings.TrimSpace(method.ParentFile().SourceLocations().ByDescriptor(method).LeadingComments),
 		}
 		methods = append(methods, methodInfo)
 	}
 
 	return ServiceInfo{
-		Name:        service.GetName(),
-		FullName:    service.GetName(), // TODO: Add package prefix if needed
+		Name:        string(service.Name()),
+		FullName:    "." + string(service.FullName()),
 		Methods:     methods,
-		File:        "", // TODO: Add file information if available
-		Description: "", // TODO: Extract description from service options
+		Package:     string(service.ParentFile().Package()),
+		File:        string(service.ParentFile().Path()),
+		Description: strings.TrimSpace(service.ParentFile().SourceLocations().ByDescriptor(service).LeadingComments),
 	}
 }

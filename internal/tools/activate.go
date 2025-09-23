@@ -144,7 +144,7 @@ func (t *ActivateProjectTool) Handle(ctx context.Context, req mcp.CallToolReques
 	// Count proto files
 	protoFiles := 0
 	if protobufProject.CompiledProtos != nil {
-		protoFiles = len(protobufProject.CompiledProtos.File)
+		protoFiles = len(protobufProject.CompiledProtos)
 	}
 
 	response := &ActivateProjectResponse{

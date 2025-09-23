@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	"github.com/bufbuild/protocompile"
-	"google.golang.org/protobuf/reflect/protodesc"
-	"google.golang.org/protobuf/types/descriptorpb"
+	"github.com/bufbuild/protocompile/linker"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
 )
@@ -28,7 +28,7 @@ func getMaxParallelism() int {
 type ProtobufProject struct {
 	ProjectRoot    string
 	Config         *config.ProjectConfig
-	CompiledProtos *descriptorpb.FileDescriptorSet
+	CompiledProtos linker.Files
 	resolver       protocompile.Resolver
 	protoFiles     []string
 }
@@ -80,7 +80,7 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 }
 
 // CompileProtos compiles proto files with the given configuration
-func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, importPaths []string) (*descriptorpb.FileDescriptorSet, error) {
+func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, importPaths []string) (linker.Files, error) {
 	if len(protoFiles) == 0 {
 		return nil, fmt.Errorf("no proto files found in configured paths")
 	}
@@ -133,17 +133,7 @@ func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, imp
 		return nil, fmt.Errorf("failed to compile proto files: %w", err)
 	}
 
-	// Convert compiled files to FileDescriptorSet
-	filesList := make([]*descriptorpb.FileDescriptorProto, len(files))
-	for i, file := range files {
-		// Each file implements protoreflect.FileDescriptor
-		// Convert to FileDescriptorProto to preserve all information
-		filesList[i] = protodesc.ToFileDescriptorProto(file)
-	}
-
-	return &descriptorpb.FileDescriptorSet{
-		File: filesList,
-	}, nil
+	return files, nil
 }
 
 // CompileProtos compiles all proto files in the project
@@ -170,46 +160,65 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 	return nil
 }
 
+func (p *ProtobufProject) GetFileDescriptorSet() (linker.Files, error) {
+	if p.CompiledProtos == nil {
+		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
+	}
+	return p.CompiledProtos, nil
+}
+
 // GetServices extracts all services from compiled protos
-func (p *ProtobufProject) GetServices() ([]*descriptorpb.ServiceDescriptorProto, error) {
+func (p *ProtobufProject) GetServices() ([]protoreflect.ServiceDescriptor, error) {
 	if p.CompiledProtos == nil {
 		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
 	}
 
-	var services []*descriptorpb.ServiceDescriptorProto
+	var services []protoreflect.ServiceDescriptor
 
-	for _, file := range p.CompiledProtos.File {
-		services = append(services, file.Service...)
+	for _, file := range p.CompiledProtos {
+		fileDesc := protoreflect.FileDescriptor(file)
+		for i := 0; i < fileDesc.Services().Len(); i++ {
+			serviceDesc := fileDesc.Services().Get(i)
+			services = append(services, serviceDesc)
+		}
 	}
 
 	return services, nil
 }
 
 // GetMessages extracts all messages from compiled protos
-func (p *ProtobufProject) GetMessages() ([]*descriptorpb.DescriptorProto, error) {
+func (p *ProtobufProject) GetMessages() ([]protoreflect.MessageDescriptor, error) {
 	if p.CompiledProtos == nil {
 		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
 	}
 
-	var messages []*descriptorpb.DescriptorProto
+	var messages []protoreflect.MessageDescriptor
 
-	for _, file := range p.CompiledProtos.File {
-		messages = append(messages, file.MessageType...)
+	for _, file := range p.CompiledProtos {
+		fileDesc := protoreflect.FileDescriptor(file)
+		for i := 0; i < fileDesc.Messages().Len(); i++ {
+			messageDesc := fileDesc.Messages().Get(i)
+			messages = append(messages, messageDesc)
+		}
 	}
 
 	return messages, nil
 }
 
 // GetEnums extracts all enums from compiled protos
-func (p *ProtobufProject) GetEnums() ([]*descriptorpb.EnumDescriptorProto, error) {
+func (p *ProtobufProject) GetEnums() ([]protoreflect.EnumDescriptor, error) {
 	if p.CompiledProtos == nil {
 		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
 	}
 
-	var enums []*descriptorpb.EnumDescriptorProto
+	var enums []protoreflect.EnumDescriptor
 
-	for _, file := range p.CompiledProtos.File {
-		enums = append(enums, file.EnumType...)
+	for _, file := range p.CompiledProtos {
+		fileDesc := protoreflect.FileDescriptor(file)
+		for i := 0; i < fileDesc.Enums().Len(); i++ {
+			enumDesc := fileDesc.Enums().Get(i)
+			enums = append(enums, enumDesc)
+		}
 	}
 
 	return enums, nil
