@@ -142,10 +142,10 @@ func TestCompileComplexProtosIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	
+
 	// Find the project root (go up from internal/compiler to project root)
 	projectRoot := filepath.Join(wd, "..", "..")
-	
+
 	// Create a temporary directory for the test
 	tempDir, err := os.MkdirTemp("", "protobuf-mcp-test-complex-*")
 	if err != nil {
@@ -156,25 +156,25 @@ func TestCompileComplexProtosIntegration(t *testing.T) {
 	// Copy testdata/complex to temp directory
 	srcDir := filepath.Join(projectRoot, "internal", "compiler", "testdata", "complex")
 	destDir := filepath.Join(tempDir, "testdata", "complex")
-	
+
 	err = os.MkdirAll(destDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create dest dir: %v", err)
 	}
-	
+
 	// Copy the complex test data
 	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		relPath, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
 		}
-		
+
 		destPath := filepath.Join(destDir, relPath)
-		
+
 		if info.IsDir() {
 			return os.MkdirAll(destPath, info.Mode())
 		} else {
@@ -184,13 +184,13 @@ func TestCompileComplexProtosIntegration(t *testing.T) {
 				return err
 			}
 			defer srcFile.Close()
-			
+
 			destFile, err := os.Create(destPath)
 			if err != nil {
 				return err
 			}
 			defer destFile.Close()
-			
+
 			_, err = io.Copy(destFile, srcFile)
 			return err
 		}

@@ -47,7 +47,7 @@ func LoadProjectConfig(projectRoot string) (*ProjectConfig, error) {
 func preprocessYAML(yamlContent string) string {
 	lines := strings.Split(yamlContent, "\n")
 	var processedLines []string
-	
+
 	for _, line := range lines {
 		// Check if line contains unquoted glob patterns
 		if strings.Contains(line, "- ") && (strings.Contains(line, "**") || strings.Contains(line, "*")) {
@@ -67,7 +67,7 @@ func preprocessYAML(yamlContent string) string {
 		}
 		processedLines = append(processedLines, line)
 	}
-	
+
 	return strings.Join(processedLines, "\n")
 }
 
@@ -101,8 +101,6 @@ func ProjectExists(projectRoot string) bool {
 	return err == nil
 }
 
-// ResolveProtoFiles resolves proto file patterns to actual file paths
-// ResolveProtoFiles resolves proto file patterns to actual file paths
 // ResolveProtoFiles resolves proto file patterns to actual file paths
 func ResolveProtoFiles(config *ProjectConfig, projectRoot string) ([]string, error) {
 	var resolvedFiles []string

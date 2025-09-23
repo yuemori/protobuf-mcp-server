@@ -208,3 +208,146 @@ func TestResolveProtoFilesWithAbsolutePath(t *testing.T) {
 		t.Errorf("Expected resolved file %s, got %s", testProtoFile, resolvedFiles[0])
 	}
 }
+
+func TestYAMLParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     string
+		expected []string
+	}{
+		{
+			name: "quoted glob patterns",
+			yaml: `proto_files:
+  - "**/*.proto"
+  - "proto/**/*.proto"`,
+			expected: []string{"**/*.proto", "proto/**/*.proto"},
+		},
+		{
+			name: "unquoted glob patterns",
+			yaml: `proto_files:
+  - **/*.proto
+  - proto/**/*.proto`,
+			expected: []string{"**/*.proto", "proto/**/*.proto"},
+		},
+		{
+			name: "mixed quoted and unquoted patterns",
+			yaml: `proto_files:
+  - **/*.proto
+  - "api/**/*.proto"
+  - proto/**/*.proto`,
+			expected: []string{"**/*.proto", "api/**/*.proto", "proto/**/*.proto"},
+		},
+		{
+			name: "simple patterns without glob",
+			yaml: `proto_files:
+  - api.proto
+  - types.proto`,
+			expected: []string{"api.proto", "types.proto"},
+		},
+		{
+			name: "single pattern",
+			yaml: `proto_files:
+  - **/*.proto`,
+			expected: []string{"**/*.proto"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary file with the test YAML
+			tempDir, err := os.MkdirTemp("", "yaml-test-*")
+			if err != nil {
+				t.Fatalf("Failed to create temp dir: %v", err)
+			}
+			defer os.RemoveAll(tempDir)
+
+			configPath := filepath.Join(tempDir, ".protobuf-mcp.yml")
+			if err := os.WriteFile(configPath, []byte(tt.yaml), 0644); err != nil {
+				t.Fatalf("Failed to write test config: %v", err)
+			}
+
+			// Load the config
+			config, err := LoadProjectConfig(tempDir)
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+
+			// Check the parsed proto files
+			if len(config.ProtoFiles) != len(tt.expected) {
+				t.Errorf("Expected %d proto files, got %d", len(tt.expected), len(config.ProtoFiles))
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if i >= len(config.ProtoFiles) || config.ProtoFiles[i] != expected {
+					t.Errorf("Expected ProtoFiles[%d] to be %s, got %s", i, expected, config.ProtoFiles[i])
+				}
+			}
+		})
+	}
+}
+
+func TestPreprocessYAML(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "unquoted glob patterns",
+			input: `proto_files:
+  - **/*.proto
+  - proto/**/*.proto`,
+			expected: `proto_files:
+  - "**/*.proto"
+  - "proto/**/*.proto"`,
+		},
+		{
+			name: "already quoted patterns",
+			input: `proto_files:
+  - "**/*.proto"
+  - "proto/**/*.proto"`,
+			expected: `proto_files:
+  - "**/*.proto"
+  - "proto/**/*.proto"`,
+		},
+		{
+			name: "mixed patterns",
+			input: `proto_files:
+  - **/*.proto
+  - "api/**/*.proto"
+  - proto/**/*.proto`,
+			expected: `proto_files:
+  - "**/*.proto"
+  - "api/**/*.proto"
+  - "proto/**/*.proto"`,
+		},
+		{
+			name: "simple patterns without glob",
+			input: `proto_files:
+  - api.proto
+  - types.proto`,
+			expected: `proto_files:
+  - api.proto
+  - types.proto`,
+		},
+		{
+			name: "single asterisk patterns",
+			input: `proto_files:
+  - *.proto
+  - api/*.proto`,
+			expected: `proto_files:
+  - "*.proto"
+  - "api/*.proto"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := preprocessYAML(tt.input)
+			if result != tt.expected {
+				t.Errorf("Expected:\n%s\nGot:\n%s", tt.expected, result)
+			}
+		})
+	}
+}
