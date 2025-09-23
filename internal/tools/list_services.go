@@ -25,26 +25,7 @@ type ListServicesParams struct {
 	// No parameters needed - uses currently activated project
 }
 
-// ServiceInfo represents information about a service
-type ServiceInfo struct {
-	Name        string                 `json:"name"`
-	FullName    string                 `json:"full_name"`
-	Methods     []MethodInfo           `json:"methods"`
-	File        string                 `json:"file"`
-	Description string                 `json:"description"`
-	Options     map[string]interface{} `json:"options,omitempty"`
-}
-
-// MethodInfo represents information about a service method
-type MethodInfo struct {
-	Name            string                 `json:"name"`
-	InputType       string                 `json:"input_type"`
-	OutputType      string                 `json:"output_type"`
-	ClientStreaming bool                   `json:"client_streaming"`
-	ServerStreaming bool                   `json:"server_streaming"`
-	Description     string                 `json:"description"`
-	Options         map[string]interface{} `json:"options,omitempty"`
-}
+// ServiceInfo and MethodInfo are defined in types.go
 
 // ListServicesResponse represents the response from list_services tool
 type ListServicesResponse struct {

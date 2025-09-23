@@ -63,6 +63,7 @@ func NewMCPServer() *MCPServer {
 	// Create and register tools
 	activateTool := tools.NewActivateProjectTool()
 	listServicesTool := &tools.ListServicesTool{}
+	getSchemaTool := &tools.GetSchemaTool{}
 
 	// Set server reference in activate tool
 	activateTool.SetServer(server)
@@ -70,6 +71,7 @@ func NewMCPServer() *MCPServer {
 	// Register tools
 	server.RegisterTool(activateTool)
 	server.RegisterTool(listServicesTool)
+	server.RegisterTool(getSchemaTool)
 
 	return server
 }

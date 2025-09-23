@@ -13,16 +13,16 @@ func TestListServicesTool_Execute(t *testing.T) {
 	tool := &ListServicesTool{}
 
 	tests := []struct {
-		name           string
-		args           json.RawMessage
-		setupProject   func()
+		name            string
+		args            json.RawMessage
+		setupProject    func()
 		expectedSuccess bool
-		expectedCount  int
+		expectedCount   int
 	}{
 		{
-			name:           "No project activated",
-			args:           json.RawMessage(`{}`),
-			setupProject:   func() { GetProjectManager().ClearCurrentProject() },
+			name:            "No project activated",
+			args:            json.RawMessage(`{}`),
+			setupProject:    func() { GetProjectManager().ClearCurrentProject() },
 			expectedSuccess: false,
 		},
 		{
@@ -182,11 +182,4 @@ func TestListServicesTool_NameAndDescription(t *testing.T) {
 	}
 }
 
-// Helper functions
-func stringPtr(s string) *string {
-	return &s
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
+// Helper functions are defined in types.go

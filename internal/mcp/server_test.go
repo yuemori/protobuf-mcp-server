@@ -61,11 +61,11 @@ func TestMCPServer_HandleToolsList(t *testing.T) {
 		t.Fatalf("Expected tools to be array, got %T", result["tools"])
 	}
 
-	if len(toolsList) != 2 {
-		t.Errorf("Expected 2 tools, got %d", len(toolsList))
+	if len(toolsList) != 3 {
+		t.Errorf("Expected 3 tools, got %d", len(toolsList))
 	}
 
-	// Check that both tools are present
+	// Check that all tools are present
 	toolNames := make(map[string]bool)
 	for _, toolInfo := range toolsList {
 		if name, ok := toolInfo["name"].(string); ok {
@@ -78,6 +78,9 @@ func TestMCPServer_HandleToolsList(t *testing.T) {
 	}
 	if !toolNames["list_services"] {
 		t.Errorf("Expected list_services tool to be present")
+	}
+	if !toolNames["get_schema"] {
+		t.Errorf("Expected get_schema tool to be present")
 	}
 }
 
