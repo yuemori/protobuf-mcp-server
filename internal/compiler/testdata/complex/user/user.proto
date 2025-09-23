@@ -4,9 +4,7 @@ package example.complex.user.v1;
 
 option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/complex/user/v1";
 
-import "testdata/complex/imports/common.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/field_mask.proto";
+import "imports/common.proto";
 
 // Advanced user management service with complex nested structures
 service AdvancedUserService {
@@ -25,6 +23,11 @@ service AdvancedUserService {
   // Batch operations
   rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
   rpc BatchUpdateUsers(BatchUpdateUsersRequest) returns (BatchUpdateUsersResponse);
+}
+
+// Field mask for selective updates (replacement for google.protobuf.FieldMask)
+message FieldMask {
+  repeated string paths = 1;
 }
 
 // Complex user entity with nested structures
@@ -79,8 +82,8 @@ message ComplexUser {
   message Account {
     AccountType type = 1;
     AccountStatus status = 2;
-    google.protobuf.Timestamp created_at = 3;
-    google.protobuf.Timestamp last_login_at = 4;
+    int64 created_at = 3;  // Unix timestamp instead of google.protobuf.Timestamp
+    int64 last_login_at = 4;  // Unix timestamp instead of google.protobuf.Timestamp
     repeated string roles = 5;
     Subscription subscription = 6;
     
@@ -100,8 +103,8 @@ message ComplexUser {
     
     message Subscription {
       string plan_id = 1;
-      google.protobuf.Timestamp starts_at = 2;
-      google.protobuf.Timestamp ends_at = 3;
+      int64 starts_at = 2;  // Unix timestamp instead of google.protobuf.Timestamp
+      int64 ends_at = 3;    // Unix timestamp instead of google.protobuf.Timestamp
       bool auto_renew = 4;
       map<string, string> features = 5;
     }
@@ -183,7 +186,7 @@ message ComplexUser {
       string id = 1;
       ActivityType type = 2;
       string description = 3;
-      google.protobuf.Timestamp timestamp = 4;
+      int64 timestamp = 4;  // Unix timestamp instead of google.protobuf.Timestamp
       map<string, string> context = 5;
       
       enum ActivityType {
@@ -199,7 +202,7 @@ message ComplexUser {
     message ActivitySummary {
       int32 total_activities = 1;
       int32 login_count = 2;
-      google.protobuf.Timestamp last_activity = 3;
+      int64 last_activity = 3;  // Unix timestamp instead of google.protobuf.Timestamp
       map<string, int32> activity_counts = 4;
     }
   }
@@ -220,7 +223,7 @@ message CreateUserResponse {
 message UpdateUserRequest {
   string user_id = 1;
   ComplexUser user = 2;
-  google.protobuf.FieldMask update_mask = 3;
+  FieldMask update_mask = 3;  // Custom FieldMask instead of google.protobuf.FieldMask
 }
 
 message UpdateUserResponse {

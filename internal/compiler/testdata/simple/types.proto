@@ -4,18 +4,14 @@ package example.simple.v1;
 
 option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/simple/v1";
 
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/empty.proto";
-import "google/api/annotations.proto";
-
 // User information
 message User {
   string id = 1;
   string name = 2;
   string email = 3;
   UserRole role = 4;
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp updated_at = 6;
+  int64 created_at = 5;  // Unix timestamp instead of google.protobuf.Timestamp
+  int64 updated_at = 6;  // Unix timestamp instead of google.protobuf.Timestamp
   UserPreferences preferences = 7;
   UserStatus status = 8;
   

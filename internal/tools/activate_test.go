@@ -22,9 +22,7 @@ func TestActivateProjectTool_Handle(t *testing.T) {
 
 	// Initialize the project
 	projectConfig := &config.ProjectConfig{
-		RootDirectory: tempDir,
-		ProtoPaths:    []string{"."},
-		IncludePaths:  []string{"."},
+		ProtoFiles: []string{"**/*.proto"},
 	}
 	// Save the config using the proper YAML format
 	if err := config.SaveProjectConfig(tempDir, projectConfig); err != nil {

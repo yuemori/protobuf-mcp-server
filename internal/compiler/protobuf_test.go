@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,11 +17,21 @@ func TestNewProtobufProject(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Create a test proto file
+	protoDir := filepath.Join(tempDir, "proto")
+	err = os.MkdirAll(protoDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create proto directory: %v", err)
+	}
+
+	testProtoFile := filepath.Join(protoDir, "test.proto")
+	err = os.WriteFile(testProtoFile, []byte("syntax = \"proto3\";\npackage test;\n"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test proto file: %v", err)
+	}
+
 	cfg := &config.ProjectConfig{
-		RootDirectory:   ".",
-		IncludePaths:    []string{".", "testdata"},
-		ProtoPaths:      []string{"testdata"},
-		IgnoredPatterns: []string{"*_test.proto"},
+		ProtoFiles: []string{"proto/**/*.proto"},
 	}
 
 	project, err := NewProtobufProject(tempDir, cfg)
@@ -43,99 +54,9 @@ func TestNewProtobufProject(t *testing.T) {
 	if project.CompiledProtos != nil {
 		t.Error("Expected CompiledProtos to be nil initially")
 	}
-}
 
-func TestFindProtoFiles(t *testing.T) {
-	// Get current working directory to construct absolute path to testdata
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-
-	// Navigate to project root (2 levels up from internal/compiler)
-	projectRoot := filepath.Join(wd, "..", "..")
-
-	cfg := &config.ProjectConfig{
-		RootDirectory:   ".",
-		IncludePaths:    []string{".", "testdata"},
-		ProtoPaths:      []string{"testdata/simple", "testdata/complex"},
-		IgnoredPatterns: []string{"*_test.proto"},
-	}
-
-	project, err := NewProtobufProject(projectRoot, cfg)
-	if err != nil {
-		t.Fatalf("Failed to create ProtobufProject: %v", err)
-	}
-
-	protoFiles, err := project.findProtoFiles()
-	if err != nil {
-		t.Fatalf("Failed to find proto files: %v", err)
-	}
-
-	// We should find our test proto files
-	_ = []string{
-		"testdata/simple/api.proto",
-		"testdata/simple/types.proto",
-		"testdata/complex/imports/common.proto",
-		"testdata/complex/user/user.proto",
-	}
-
-	if len(protoFiles) == 0 {
-		t.Fatal("Expected to find proto files, but got none")
-	}
-
-	// Check that we found some expected files (exact matching depends on file system)
-	t.Logf("Found proto files: %v", protoFiles)
-
-	// At least verify we found some .proto files
-	foundProto := false
-	for _, file := range protoFiles {
-		if filepath.Ext(file) == ".proto" {
-			foundProto = true
-			break
-		}
-	}
-
-	if !foundProto {
-		t.Error("Expected to find at least one .proto file")
-	}
-
-	// Test file ignoring
-	for _, file := range protoFiles {
-		if filepath.Base(file) == "test.proto" && project.shouldIgnoreFile(file) {
-			t.Errorf("File %s should be ignored but was included", file)
-		}
-	}
-}
-
-func TestShouldIgnoreFile(t *testing.T) {
-	cfg := &config.ProjectConfig{
-		IgnoredPatterns: []string{"*_test.proto", "tmp/**"},
-	}
-
-	project := &ProtobufProject{
-		Config: cfg,
-	}
-
-	testCases := []struct {
-		name     string
-		filePath string
-		expected bool
-	}{
-		{"normal proto file", "/path/to/api.proto", false},
-		{"test proto file", "/path/to/api_test.proto", true},
-		{"another test file", "/path/to/user_test.proto", true},
-		{"tmp directory file", "/tmp/test.proto", false}, // glob pattern doesn't match like this
-		{"normal file in subdirectory", "/path/to/subdir/service.proto", false},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := project.shouldIgnoreFile(tc.filePath)
-			if result != tc.expected {
-				t.Errorf("shouldIgnoreFile(%s) = %v, expected %v", tc.filePath, result, tc.expected)
-			}
-		})
+	if len(project.protoFiles) != 1 {
+		t.Errorf("Expected 1 proto file, got %d", len(project.protoFiles))
 	}
 }
 
@@ -147,21 +68,19 @@ func TestCompileProtosIntegration(t *testing.T) {
 	}
 
 	projectRoot := filepath.Join(wd, "..", "..")
-	testDataPath := filepath.Join(projectRoot, "testdata", "simple")
+	testDataPath := filepath.Join(projectRoot, "internal", "compiler", "testdata", "simple")
 
 	// Check if testdata exists
 	if _, err := os.Stat(testDataPath); os.IsNotExist(err) {
 		t.Skip("Testdata not available, skipping integration test")
 	}
 
+	// Use testdata/simple as the project root for compilation
 	cfg := &config.ProjectConfig{
-		RootDirectory:   ".",
-		IncludePaths:    []string{".", "testdata"},
-		ProtoPaths:      []string{"testdata/simple"},
-		IgnoredPatterns: []string{"*_test.proto"},
+		ProtoFiles: []string{"**/*.proto"},
 	}
 
-	project, err := NewProtobufProject(projectRoot, cfg)
+	project, err := NewProtobufProject(testDataPath, cfg)
 	if err != nil {
 		t.Fatalf("Failed to create ProtobufProject: %v", err)
 	}
@@ -169,12 +88,10 @@ func TestCompileProtosIntegration(t *testing.T) {
 	ctx := context.Background()
 	err = project.CompileProtos(ctx)
 	if err != nil {
-		// Log the error but don't fail the test as it might be due to missing dependencies
-		t.Logf("Compilation failed (might be due to missing googleapis): %v", err)
-		return
+		t.Fatalf("Compilation failed: %v", err)
 	}
 
-	// If compilation succeeded, verify the results
+	// Verify the results
 	if project.CompiledProtos == nil {
 		t.Error("Expected CompiledProtos to be set after successful compilation")
 		return
@@ -191,6 +108,9 @@ func TestCompileProtosIntegration(t *testing.T) {
 		t.Errorf("Failed to get services: %v", err)
 	} else {
 		t.Logf("Found %d services", len(services))
+		if len(services) != 2 {
+			t.Errorf("Expected 2 services (GreetingService, UserService), got %d", len(services))
+		}
 	}
 
 	// Test message extraction
@@ -199,6 +119,9 @@ func TestCompileProtosIntegration(t *testing.T) {
 		t.Errorf("Failed to get messages: %v", err)
 	} else {
 		t.Logf("Found %d messages", len(messages))
+		if len(messages) < 10 {
+			t.Errorf("Expected at least 10 messages, got %d", len(messages))
+		}
 	}
 
 	// Test enum extraction
@@ -207,6 +130,130 @@ func TestCompileProtosIntegration(t *testing.T) {
 		t.Errorf("Failed to get enums: %v", err)
 	} else {
 		t.Logf("Found %d enums", len(enums))
+		if len(enums) < 5 {
+			t.Errorf("Expected at least 5 enums, got %d", len(enums))
+		}
+	}
+}
+
+func TestCompileComplexProtosIntegration(t *testing.T) {
+	// Get the project root directory
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	
+	// Find the project root (go up from internal/compiler to project root)
+	projectRoot := filepath.Join(wd, "..", "..")
+	
+	// Create a temporary directory for the test
+	tempDir, err := os.MkdirTemp("", "protobuf-mcp-test-complex-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Copy testdata/complex to temp directory
+	srcDir := filepath.Join(projectRoot, "internal", "compiler", "testdata", "complex")
+	destDir := filepath.Join(tempDir, "testdata", "complex")
+	
+	err = os.MkdirAll(destDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create dest dir: %v", err)
+	}
+	
+	// Copy the complex test data
+	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+		
+		destPath := filepath.Join(destDir, relPath)
+		
+		if info.IsDir() {
+			return os.MkdirAll(destPath, info.Mode())
+		} else {
+			// Copy file content
+			srcFile, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer srcFile.Close()
+			
+			destFile, err := os.Create(destPath)
+			if err != nil {
+				return err
+			}
+			defer destFile.Close()
+			
+			_, err = io.Copy(destFile, srcFile)
+			return err
+		}
+	})
+	if err != nil {
+		t.Fatalf("Failed to copy test data: %v", err)
+	}
+
+	// Use testdata/complex as the project root for compilation
+	cfg := &config.ProjectConfig{
+		ProtoFiles: []string{"**/*.proto"},
+	}
+
+	// Create protobuf project with testdata/complex as root
+	project, err := NewProtobufProject(destDir, cfg)
+	if err != nil {
+		t.Fatalf("Failed to create protobuf project: %v", err)
+	}
+
+	// Compile protos
+	err = project.CompileProtos(context.Background())
+	if err != nil {
+		t.Fatalf("Compilation failed: %v", err)
+	}
+
+	if project.CompiledProtos == nil {
+		t.Fatal("Compiled result is nil")
+	}
+
+	// Verify we have the expected number of files
+	expectedFiles := 2 // common.proto and user.proto
+	if len(project.protoFiles) != expectedFiles {
+		t.Errorf("Expected %d proto files, got %d", expectedFiles, len(project.protoFiles))
+	}
+
+	// Verify we can find services
+	services, err := project.GetServices()
+	if err != nil {
+		t.Errorf("Failed to get services: %v", err)
+	} else if len(services) == 0 {
+		t.Error("No services found in complex test")
+	} else {
+		t.Logf("Found %d services in complex test", len(services))
+	}
+
+	// Verify we can find messages (should be many due to nested structures)
+	messages, err := project.GetMessages()
+	if err != nil {
+		t.Errorf("Failed to get messages: %v", err)
+	} else if len(messages) < 10 { // Adjusted expectation based on actual content
+		t.Errorf("Expected at least 10 messages in complex test, got %d", len(messages))
+	} else {
+		t.Logf("Found %d messages in complex test", len(messages))
+	}
+
+	// Verify we can find enums (should be several due to nested enums)
+	enums, err := project.GetEnums()
+	if err != nil {
+		t.Errorf("Failed to get enums: %v", err)
+	} else if len(enums) < 2 { // Adjusted expectation based on actual content
+		t.Errorf("Expected at least 2 enums in complex test, got %d", len(enums))
+	} else {
+		t.Logf("Found %d enums in complex test", len(enums))
 	}
 }
 

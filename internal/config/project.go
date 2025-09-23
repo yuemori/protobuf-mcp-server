@@ -4,38 +4,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // ProjectConfig represents the configuration for a protobuf project
 type ProjectConfig struct {
-	RootDirectory   string                 `yaml:"root_directory"`
-	IncludePaths    []string               `yaml:"include_paths"`
-	ProtoPaths      []string               `yaml:"proto_paths"`
-	CompilerOptions map[string]interface{} `yaml:"compiler_options"`
-	IgnoredPatterns []string               `yaml:"ignored_patterns"`
-	ShowLogs        bool                   `yaml:"show_logs"`
+	ProtoFiles []string `yaml:"proto_files"`
 }
 
 // DefaultProjectConfig returns a default configuration for a new project
 func DefaultProjectConfig() *ProjectConfig {
 	return &ProjectConfig{
-		RootDirectory:   ".",
-		IncludePaths:    []string{"."},
-		ProtoPaths:      []string{"."},
-		CompilerOptions: map[string]interface{}{},
-		IgnoredPatterns: []string{
-			"*_test.proto",
-			"tmp/**",
+		ProtoFiles: []string{
+			"proto/**/*.proto",
 		},
-		ShowLogs: false,
 	}
 }
 
 // LoadProjectConfig loads project configuration from the given directory
 func LoadProjectConfig(projectRoot string) (*ProjectConfig, error) {
-	configPath := filepath.Join(projectRoot, ".protobuf-mcp", "project.yml")
+	configPath := filepath.Join(projectRoot, ".protobuf-mcp.yml")
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -52,12 +42,7 @@ func LoadProjectConfig(projectRoot string) (*ProjectConfig, error) {
 
 // SaveProjectConfig saves the project configuration to the given directory
 func SaveProjectConfig(projectRoot string, config *ProjectConfig) error {
-	configDir := filepath.Join(projectRoot, ".protobuf-mcp")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	configPath := filepath.Join(configDir, "project.yml")
+	configPath := filepath.Join(projectRoot, ".protobuf-mcp.yml")
 	data, err := yaml.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
@@ -72,7 +57,99 @@ func SaveProjectConfig(projectRoot string, config *ProjectConfig) error {
 
 // ProjectExists checks if a project is already initialized in the given directory
 func ProjectExists(projectRoot string) bool {
-	configPath := filepath.Join(projectRoot, ".protobuf-mcp", "project.yml")
+	configPath := filepath.Join(projectRoot, ".protobuf-mcp.yml")
 	_, err := os.Stat(configPath)
 	return err == nil
+}
+
+// ResolveProtoFiles resolves proto file patterns to actual file paths
+// ResolveProtoFiles resolves proto file patterns to actual file paths
+// ResolveProtoFiles resolves proto file patterns to actual file paths
+func ResolveProtoFiles(config *ProjectConfig, projectRoot string) ([]string, error) {
+	var resolvedFiles []string
+
+	for _, pattern := range config.ProtoFiles {
+		if filepath.IsAbs(pattern) {
+			// Absolute path: use as-is
+			matches, err := filepath.Glob(pattern)
+			if err != nil {
+				return nil, fmt.Errorf("failed to glob absolute pattern %q: %w", pattern, err)
+			}
+			resolvedFiles = append(resolvedFiles, matches...)
+		} else {
+			// Relative path: resolve from project root
+			fullPattern := filepath.Join(projectRoot, pattern)
+			
+			// Handle ** pattern by walking the directory tree
+			if strings.Contains(pattern, "**") {
+				matches, err := resolveRecursivePattern(pattern, projectRoot)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve recursive pattern %q: %w", pattern, err)
+				}
+				resolvedFiles = append(resolvedFiles, matches...)
+			} else {
+				matches, err := filepath.Glob(fullPattern)
+				if err != nil {
+					return nil, fmt.Errorf("failed to glob relative pattern %q: %w", pattern, err)
+				}
+				resolvedFiles = append(resolvedFiles, matches...)
+			}
+		}
+	}
+
+	return resolvedFiles, nil
+}
+
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+// resolveRecursivePattern handles ** patterns by walking the directory tree
+func resolveRecursivePattern(pattern, projectRoot string) ([]string, error) {
+	var matches []string
+	
+	// Find the ** pattern in the string
+	starStarIndex := strings.Index(pattern, "**")
+	if starStarIndex == -1 {
+		// Fallback to regular glob if not a ** pattern
+		fullPattern := filepath.Join(projectRoot, pattern)
+		return filepath.Glob(fullPattern)
+	}
+	
+	baseDir := filepath.Join(projectRoot, strings.TrimSuffix(pattern[:starStarIndex], "/"))
+	filePattern := strings.TrimPrefix(pattern[starStarIndex+2:], "/")
+	
+	// Check if baseDir exists
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		return matches, nil
+	}
+	
+	// Walk the directory tree
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if !info.IsDir() {
+			// For ** patterns, we need to check if the file matches the pattern
+			// Since we're walking recursively, we can use the filename directly
+			filename := filepath.Base(path)
+			
+			matched, err := filepath.Match(filePattern, filename)
+			if err != nil {
+				return err
+			}
+			
+			if matched {
+				matches = append(matches, path)
+			}
+		}
+		
+		return nil
+	})
+	
+	return matches, err
 }

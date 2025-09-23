@@ -9,6 +9,7 @@ import (
 )
 
 // InitCommand handles the initialization of a new protobuf project
+// InitCommand handles the initialization of a new protobuf project
 func InitCommand(args []string) error {
 	var projectPath string
 
@@ -44,9 +45,9 @@ func InitCommand(args []string) error {
 	}
 
 	fmt.Printf("Successfully initialized protobuf MCP project in %s\n", absPath)
-	fmt.Println("Configuration file created at: .protobuf-mcp/project.yml")
+	fmt.Println("Configuration file created at: .protobuf-mcp.yml")
 	fmt.Println("\nNext steps:")
-	fmt.Println("1. Edit .protobuf-mcp/project.yml to configure your proto paths")
+	fmt.Println("1. Edit .protobuf-mcp.yml to configure your proto files")
 	fmt.Println("2. Use MCP tools to analyze your protobuf files")
 
 	return nil

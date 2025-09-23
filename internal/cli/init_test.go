@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
@@ -18,6 +19,11 @@ func TestInitCommand(t *testing.T) {
 
 	// Test init with explicit path
 	testPath := filepath.Join(tempDir, "test-project")
+	err = os.MkdirAll(testPath, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test project directory: %v", err)
+	}
+
 	err = InitCommand([]string{testPath})
 	if err != nil {
 		t.Fatalf("InitCommand failed: %v", err)
@@ -35,12 +41,15 @@ func TestInitCommand(t *testing.T) {
 	}
 
 	// Verify config contains expected default values
-	if loadedConfig.RootDirectory != "." {
-		t.Errorf("Expected RootDirectory to be '.', got %s", loadedConfig.RootDirectory)
+	expectedProtoFiles := []string{"proto/**/*.proto"}
+	if len(loadedConfig.ProtoFiles) != len(expectedProtoFiles) {
+		t.Errorf("Expected %d proto files, got %d", len(expectedProtoFiles), len(loadedConfig.ProtoFiles))
 	}
 
-	if len(loadedConfig.IncludePaths) == 0 {
-		t.Error("Expected IncludePaths to be populated")
+	for i, expected := range expectedProtoFiles {
+		if i >= len(loadedConfig.ProtoFiles) || loadedConfig.ProtoFiles[i] != expected {
+			t.Errorf("Expected ProtoFiles[%d] to be %s, got %s", i, expected, loadedConfig.ProtoFiles[i])
+		}
 	}
 }
 
@@ -158,16 +167,5 @@ func TestInitCommandRelativePath(t *testing.T) {
 
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			strings_contains_helper(s, substr))))
-}
-
-func strings_contains_helper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(s, substr)
 }

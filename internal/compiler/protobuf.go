@@ -19,23 +19,30 @@ type ProtobufProject struct {
 	Config         *config.ProjectConfig
 	CompiledProtos *descriptorpb.FileDescriptorSet
 	resolver       protocompile.Resolver
+	protoFiles     []string
 }
 
 // NewProtobufProject creates a new ProtobufProject instance
 func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*ProtobufProject, error) {
-	// Convert relative include paths to absolute paths
-	absoluteIncludePaths := make([]string, len(cfg.IncludePaths))
-	for i, includePath := range cfg.IncludePaths {
-		if filepath.IsAbs(includePath) {
-			absoluteIncludePaths[i] = includePath
-		} else {
-			absoluteIncludePaths[i] = filepath.Join(projectRoot, includePath)
-		}
+	// Resolve proto files using the new config system
+	protoFiles, err := config.ResolveProtoFiles(cfg, projectRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve proto files: %w", err)
 	}
 
-	// Create source resolver with absolute import paths
+	// Convert absolute paths to relative paths for protocompile
+	var relativeProtoFiles []string
+	for _, file := range protoFiles {
+		relPath, err := filepath.Rel(projectRoot, file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get relative path for %s: %w", file, err)
+		}
+		relativeProtoFiles = append(relativeProtoFiles, relPath)
+	}
+
+	// Create source resolver with project root as import path
 	resolver := &protocompile.SourceResolver{
-		ImportPaths: absoluteIncludePaths,
+		ImportPaths: []string{projectRoot},
 	}
 
 	// Wrap with standard imports for well-known types
@@ -46,31 +53,26 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 		Config:         cfg,
 		CompiledProtos: nil,
 		resolver:       resolverWithStdImports,
+		protoFiles:     relativeProtoFiles,
 	}, nil
 }
 
 // CompileProtos compiles all proto files in the project
 func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
-	// Find all proto files in the configured paths
-	protoFiles, err := p.findProtoFiles()
-	if err != nil {
-		return fmt.Errorf("failed to find proto files: %w", err)
-	}
-
-	if len(protoFiles) == 0 {
+	if len(p.protoFiles) == 0 {
 		return fmt.Errorf("no proto files found in configured paths")
 	}
 
 	// Create compiler with our resolver
 	compiler := protocompile.Compiler{
 		Resolver:       p.resolver,
-		MaxParallelism: 4, // Restore normal parallelism
+		MaxParallelism: 4,
 		SourceInfoMode: protocompile.SourceInfoStandard,
 	}
 
 	// Compile all proto files with dependency resolution
 	// Sort files to ensure dependencies are compiled first
-	sortedFiles := p.sortProtoFilesByDependencies(protoFiles)
+	sortedFiles := p.sortProtoFilesByDependencies(p.protoFiles)
 
 	// Compile all files together - protocompile will resolve dependencies automatically
 	files, err := compiler.Compile(ctx, sortedFiles...)
@@ -91,88 +93,6 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// findProtoFiles discovers all proto files in the configured proto paths
-func (p *ProtobufProject) findProtoFiles() ([]string, error) {
-	var protoFiles []string
-
-	// Search in both ProtoPaths and IncludePaths
-	searchPaths := append(p.Config.ProtoPaths, p.Config.IncludePaths...)
-
-	for _, protoPath := range searchPaths {
-		// Convert to absolute path relative to project root
-		absolutePath := filepath.Join(p.ProjectRoot, protoPath)
-
-		// Use glob to find all .proto files
-		pattern := filepath.Join(absolutePath, "**", "*.proto")
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			return nil, fmt.Errorf("failed to glob proto files in %s: %w", protoPath, err)
-		}
-
-		// Convert back to relative paths for protocompile
-		for _, match := range matches {
-			// Skip ignored patterns
-			if p.shouldIgnoreFile(match) {
-				continue
-			}
-
-			// Convert to relative path from project root
-			relPath, err := filepath.Rel(p.ProjectRoot, match)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get relative path for %s: %w", match, err)
-			}
-
-			protoFiles = append(protoFiles, relPath)
-		}
-
-		// Also try direct pattern matching without ** (for simple cases)
-		simplePattern := filepath.Join(absolutePath, "*.proto")
-		simpleMatches, err := filepath.Glob(simplePattern)
-		if err != nil {
-			return nil, fmt.Errorf("failed to glob proto files in %s: %w", protoPath, err)
-		}
-
-		for _, match := range simpleMatches {
-			if p.shouldIgnoreFile(match) {
-				continue
-			}
-
-			relPath, err := filepath.Rel(p.ProjectRoot, match)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get relative path for %s: %w", match, err)
-			}
-
-			// Avoid duplicates
-			found := false
-			for _, existing := range protoFiles {
-				if existing == relPath {
-					found = true
-					break
-				}
-			}
-			if !found {
-				protoFiles = append(protoFiles, relPath)
-			}
-		}
-	}
-
-	return protoFiles, nil
-}
-
-// shouldIgnoreFile checks if a file should be ignored based on configured patterns
-func (p *ProtobufProject) shouldIgnoreFile(filePath string) bool {
-	for _, pattern := range p.Config.IgnoredPatterns {
-		matched, err := filepath.Match(pattern, filepath.Base(filePath))
-		if err != nil {
-			continue // Skip invalid patterns
-		}
-		if matched {
-			return true
-		}
-	}
-	return false
 }
 
 // GetServices extracts all services from compiled protos

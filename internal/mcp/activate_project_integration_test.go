@@ -14,6 +14,7 @@ import (
 )
 
 // TestActivateProjectTool_Integration tests the activate_project tool through MCP protocol
+// TestActivateProjectTool_Integration tests the activate_project tool through MCP protocol
 func TestActivateProjectTool_Integration(t *testing.T) {
 	// Create a temporary directory with a test project
 	tempDir, err := os.MkdirTemp("", "protobuf-activate-test-*")
@@ -24,9 +25,7 @@ func TestActivateProjectTool_Integration(t *testing.T) {
 
 	// Create project config
 	projectConfig := &config.ProjectConfig{
-		RootDirectory: tempDir,
-		ProtoPaths:    []string{"."},
-		IncludePaths:  []string{"."},
+		ProtoFiles: []string{"**/*.proto"},
 	}
 	if err := config.SaveProjectConfig(tempDir, projectConfig); err != nil {
 		t.Fatalf("Failed to save project config: %v", err)

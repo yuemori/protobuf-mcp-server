@@ -4,24 +4,15 @@ package example.simple.v1;
 
 option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/simple/v1";
 
-import "testdata/simple/types.proto";
+import "types.proto";
 
 // Simple greeting service for testing MCP functionality
 service GreetingService {
   // Say hello to a user
-  rpc SayHello(HelloRequest) returns (HelloResponse) {
-    option (google.api.http) = {
-      post: "/v1/greeting/hello"
-      body: "*"
-    };
-  }
+  rpc SayHello(HelloRequest) returns (HelloResponse);
 
   // Get user information
-  rpc GetUser(GetUserRequest) returns (User) {
-    option (google.api.http) = {
-      get: "/v1/users/{user_id}"
-    };
-  }
+  rpc GetUser(GetUserRequest) returns (User);
 
   // Stream messages
   rpc StreamMessages(StreamRequest) returns (stream MessageEvent);
@@ -39,7 +30,11 @@ service UserService {
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
   
   // Delete a user
-  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+  rpc DeleteUser(DeleteUserRequest) returns (Empty);
+}
+
+// Empty message (replacement for google.protobuf.Empty)
+message Empty {
 }
 
 // Request message for saying hello

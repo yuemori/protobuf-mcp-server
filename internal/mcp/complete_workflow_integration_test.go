@@ -24,9 +24,7 @@ func TestCompleteWorkflow_Integration(t *testing.T) {
 
 	// Create project config
 	projectConfig := &config.ProjectConfig{
-		RootDirectory: tempDir,
-		ProtoPaths:    []string{"."},
-		IncludePaths:  []string{"."},
+		ProtoFiles: []string{"**/*.proto"},
 	}
 	if err := config.SaveProjectConfig(tempDir, projectConfig); err != nil {
 		t.Fatalf("Failed to save project config: %v", err)
