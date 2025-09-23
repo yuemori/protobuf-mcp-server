@@ -21,9 +21,19 @@ type ProtobufProject struct {
 
 // NewProtobufProject creates a new ProtobufProject instance
 func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*ProtobufProject, error) {
-	// Create source resolver with import paths
+	// Convert relative include paths to absolute paths
+	absoluteIncludePaths := make([]string, len(cfg.IncludePaths))
+	for i, includePath := range cfg.IncludePaths {
+		if filepath.IsAbs(includePath) {
+			absoluteIncludePaths[i] = includePath
+		} else {
+			absoluteIncludePaths[i] = filepath.Join(projectRoot, includePath)
+		}
+	}
+
+	// Create source resolver with absolute import paths
 	resolver := &protocompile.SourceResolver{
-		ImportPaths: cfg.IncludePaths,
+		ImportPaths: absoluteIncludePaths,
 	}
 
 	// Wrap with standard imports for well-known types
