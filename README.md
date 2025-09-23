@@ -57,6 +57,30 @@ go mod tidy
 go build -o protobuf-mcp ./cmd/protobuf-mcp
 ```
 
+### Initialize Your Project
+
+After installation, initialize your protobuf project:
+
+```bash
+# Navigate to your protobuf project directory
+cd /path/to/your/protobuf/project
+
+# Initialize the project
+protobuf-mcp init
+
+# Or using go run (if not installed globally)
+go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init
+```
+
+This creates a `.protobuf-mcp.yml` configuration file with default settings:
+
+```yaml
+proto_files:
+  - "proto/**/*.proto"
+import_paths:
+  - "."
+```
+
 ## Configuration
 
 ### Claude Code Setup
@@ -93,35 +117,7 @@ go build -o protobuf-mcp ./cmd/protobuf-mcp
 }
 ```
 
-2. **Initialize your protobuf project**:
-
-```bash
-# Navigate to your protobuf project directory
-cd /path/to/your/protobuf/project
-
-# Initialize the project (using go run)
-go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init
-
-# Or if installed globally
-protobuf-mcp init
-```
-
-This creates a `.protobuf-mcp/project.yml` configuration file:
-
-```yaml
-root_directory: .
-include_paths:
-  - .
-  - google # For Google API protos
-proto_paths:
-  - .
-  - google
-compiler_options: {}
-ignored_patterns:
-  - "*_test.proto"
-  - "tmp/**"
-show_logs: false
-```
+2. **Initialize your protobuf project** (see Installation section above)
 
 ### Cursor Setup
 
@@ -159,56 +155,39 @@ show_logs: false
 }
 ```
 
-2. **Initialize your protobuf project** (same as Claude Code)
+2. **Initialize your protobuf project** (see Installation section above)
 
 ## Usage
 
-### Project Initialization
+### Configuration File
 
-Before using the MCP server, you need to initialize your protobuf project:
-
-#### Initialize a New Project
-
-```bash
-# Navigate to your protobuf project directory
-cd /path/to/your/protobuf/project
-
-# Initialize using go run (recommended)
-go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init
-
-# Or if installed globally
-protobuf-mcp init
-```
-
-This creates a `.protobuf-mcp/project.yml` configuration file in your project directory.
-
-#### Configuration File
-
-The `init` command generates a configuration file with the following structure:
+The `.protobuf-mcp.yml` configuration file supports the following options:
 
 ```yaml
-root_directory: . # Project root directory
-include_paths: # Paths to search for imported protos
-  - .
-  - google # For Google API protos
-proto_paths: # Paths containing your proto files
-  - .
-  - google
-compiler_options: {} # Additional compiler options
-ignored_patterns: # Patterns to ignore
-  - "*_test.proto"
-  - "tmp/**"
-show_logs: false # Enable debug logging
+# Glob patterns to match proto files
+proto_files:
+  - "proto/**/*.proto"
+  - "api/**/*.proto"
+
+# Import paths for protobuf compiler
+import_paths:
+  - "."
+  - "proto"
+  - "third_party"
 ```
 
-#### Customize Configuration
+#### Configuration Options
 
-You can edit `.protobuf-mcp/project.yml` to customize:
+- **proto_files**: Glob patterns to match your `.proto` files
 
-- **include_paths**: Add paths where imported `.proto` files are located
-- **proto_paths**: Specify directories containing your project's `.proto` files
-- **ignored_patterns**: Add patterns to ignore specific files
-- **show_logs**: Enable debug logging for troubleshooting
+  - Supports `**` for recursive directory matching
+  - Can specify multiple patterns
+  - Relative paths are resolved from the config file location
+
+- **import_paths**: Directories where the protobuf compiler should look for imported files
+  - Used when resolving `import` statements in proto files
+  - Defaults to `["."]` if not specified
+  - Supports both relative and absolute paths
 
 #### Re-initialize Project
 
@@ -328,27 +307,7 @@ protobuf-mcp init
 }
 ```
 
-## Configuration Options
-
-### Project Configuration (`.protobuf-mcp/project.yml`)
-
-```yaml
-root_directory: . # Project root directory
-include_paths: # Paths to search for imported protos
-  - .
-  - google
-  - third_party
-proto_paths: # Paths containing your proto files
-  - .
-  - api
-  - internal
-compiler_options: {} # Additional compiler options
-ignored_patterns: # Patterns to ignore
-  - "*_test.proto"
-  - "tmp/**"
-  - "generated/**"
-show_logs: false # Enable debug logging
-```
+## Advanced Configuration
 
 ### Environment Variables
 
@@ -385,36 +344,38 @@ show_logs: false # Enable debug logging
 
    - Run `go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init` in your project directory
    - Or if installed globally: `protobuf-mcp init`
-   - Ensure `.protobuf-mcp/project.yml` exists
+   - Ensure `.protobuf-mcp.yml` exists
 
 2. **"No proto files found" error**:
 
-   - Check your `proto_paths` configuration
+   - Check your `proto_files` configuration patterns
    - Ensure `.proto` files exist in specified paths
+   - Verify glob patterns match your file structure
 
 3. **Import resolution errors**:
 
-   - Add import paths to `include_paths` in configuration
-   - Ensure imported files are accessible
+   - Add import paths to `import_paths` in configuration
+   - Ensure imported files are accessible from specified import paths
 
 4. **Compilation errors**:
    - Check proto file syntax
    - Verify all dependencies are available
-   - Enable `show_logs: true` for detailed error information
+   - Check import paths are correctly configured
 
 ### Debug Mode
 
-Enable debug logging in your project configuration:
+Enable debug logging using environment variables:
 
-```yaml
-show_logs: true
+```bash
+export PROTOBUF_MCP_LOG_LEVEL=debug
+protobuf-mcp server
 ```
 
 This will provide detailed information about:
 
-- Proto file discovery
+- Proto file discovery and pattern matching
 - Compilation process
-- Import resolution
+- Import path resolution
 - Error details
 
 ## CLI Commands
@@ -435,7 +396,7 @@ protobuf-mcp init
 
 **Options:**
 
-- Creates `.protobuf-mcp/project.yml` configuration file
+- Creates `.protobuf-mcp.yml` configuration file
 - Detects existing configuration and prompts for overwrite
 - Sets up default paths and patterns
 
@@ -443,7 +404,7 @@ protobuf-mcp init
 
 ```
 Initializing protobuf project...
-Created .protobuf-mcp/project.yml
+Created .protobuf-mcp.yml
 Project initialized successfully!
 ```
 
