@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/yuemori/protobuf-mcp-server/internal/cli"
 )
 
 func main() {
@@ -14,10 +16,14 @@ func main() {
 	}
 
 	command := os.Args[1]
+	args := os.Args[2:]
+
 	switch command {
 	case "init":
-		// TODO: Implement init command
-		fmt.Println("Init command not implemented yet")
+		if err := cli.InitCommand(args); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		os.Exit(1)
