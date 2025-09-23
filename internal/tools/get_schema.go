@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/bufbuild/protocompile/linker"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,33 +29,21 @@ func (t *GetSchemaTool) GetTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_schema",
 		mcp.WithDescription("Get detailed schema information from the activated protobuf project"),
-		mcp.WithArray("message_types",
-			mcp.Description("Filter by specific message types"),
-			mcp.Items(map[string]any{"type": "string"}),
+		mcp.WithString("name",
+			mcp.Description("Filter by name (searches both Name and FullName)"),
 		),
-		mcp.WithArray("service_types",
-			mcp.Description("Filter by specific service types"),
-			mcp.Items(map[string]any{"type": "string"}),
-		),
-		mcp.WithArray("enum_types",
-			mcp.Description("Filter by specific enum types"),
-			mcp.Items(map[string]any{"type": "string"}),
-		),
-		mcp.WithBoolean("include_file_info",
-			mcp.DefaultBool(false),
-			mcp.Description("Include file information in the response"),
+		mcp.WithString("type",
+			mcp.Description("Filter by type: 'service', 'enum', or 'message'"),
 		),
 	)
 }
 
 // GetSchemaParams represents the parameters for get_schema tool
 type GetSchemaParams struct {
-	// Optional filters for specific types
-	MessageTypes []string `json:"message_types,omitempty"`
-	ServiceTypes []string `json:"service_types,omitempty"`
-	EnumTypes    []string `json:"enum_types,omitempty"`
-	// Include file information
-	IncludeFileInfo bool `json:"include_file_info,omitempty"`
+	// Name filter (searches both Name and FullName)
+	Name string `json:"name,omitempty"`
+	// Type filter: "service", "enum", or "message"
+	Type string `json:"type,omitempty"`
 }
 
 // GetSchemaResponse represents the response for get_schema tool
@@ -143,10 +132,8 @@ type StatsInfo struct {
 func (t *GetSchemaTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Parse parameters
 	var params GetSchemaParams
-	params.MessageTypes = t.getStringArray(req, "message_types")
-	params.ServiceTypes = t.getStringArray(req, "service_types")
-	params.EnumTypes = t.getStringArray(req, "enum_types")
-	params.IncludeFileInfo = req.GetBool("include_file_info", false)
+	params.Name = req.GetString("name", "")
+	params.Type = req.GetString("type", "")
 
 	// Get current project
 	project := t.projectManager.GetProject()
@@ -199,24 +186,22 @@ func (t *GetSchemaTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(string(responseJSON)), nil
 }
 
-// getStringArray extracts a string array from the request
-func (t *GetSchemaTool) getStringArray(req mcp.CallToolRequest, key string) []string {
-	args := req.GetArguments()
-	if args == nil {
-		return []string{}
+// matchesName checks if a name matches the search criteria
+func (t *GetSchemaTool) matchesName(name, fullName, searchName string) bool {
+	if searchName == "" {
+		return true
 	}
+	searchName = strings.ToLower(searchName)
+	return strings.Contains(strings.ToLower(name), searchName) ||
+		strings.Contains(strings.ToLower(fullName), searchName)
+}
 
-	if arr, ok := args[key].([]interface{}); ok {
-		result := make([]string, 0, len(arr))
-		for _, item := range arr {
-			if str, ok := item.(string); ok {
-				result = append(result, str)
-			}
-		}
-		return result
+// matchesType checks if a type matches the filter criteria
+func (t *GetSchemaTool) matchesType(actualType, filterType string) bool {
+	if filterType == "" {
+		return true
 	}
-
-	return []string{}
+	return actualType == filterType
 }
 
 // buildSchemaInfo builds detailed schema information from the compiled project
@@ -231,87 +216,52 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 
 	// Process each file in the compiled protos
 	for _, file := range project.CompiledProtos {
-		// Add file information if requested
-		if params.IncludeFileInfo {
-			fileInfo := t.convertFileToInfo(file)
-			schemaInfo.Files = append(schemaInfo.Files, fileInfo)
-			schemaInfo.Stats.TotalFiles++
-		}
+		// Always add file information
+		fileInfo := t.convertFileToInfo(file)
+		schemaInfo.Files = append(schemaInfo.Files, fileInfo)
+		schemaInfo.Stats.TotalFiles++
 
 		// Process messages
-		for i := 0; i < file.Messages().Len(); i++ {
-			message := file.Messages().Get(i)
-			if t.shouldIncludeMessage(message, params.MessageTypes) {
-				messageInfo := t.convertMessageToInfo(message, file)
-				schemaInfo.Messages = append(schemaInfo.Messages, messageInfo)
-				schemaInfo.Stats.TotalMessages++
-				schemaInfo.Stats.TotalFields += len(messageInfo.Fields)
+		if t.matchesType("message", params.Type) {
+			for i := 0; i < file.Messages().Len(); i++ {
+				message := file.Messages().Get(i)
+				if t.matchesName(string(message.Name()), string(message.FullName()), params.Name) {
+					messageInfo := t.convertMessageToInfo(message, file)
+					schemaInfo.Messages = append(schemaInfo.Messages, messageInfo)
+					schemaInfo.Stats.TotalMessages++
+					schemaInfo.Stats.TotalFields += len(messageInfo.Fields)
+				}
 			}
 		}
 
 		// Process services
-		for i := 0; i < file.Services().Len(); i++ {
-			service := file.Services().Get(i)
-			if t.shouldIncludeService(service, params.ServiceTypes) {
-				serviceInfo := t.convertServiceToInfo(service, file)
-				schemaInfo.Services = append(schemaInfo.Services, serviceInfo)
-				schemaInfo.Stats.TotalServices++
-				schemaInfo.Stats.TotalMethods += len(serviceInfo.Methods)
+		if t.matchesType("service", params.Type) {
+			for i := 0; i < file.Services().Len(); i++ {
+				service := file.Services().Get(i)
+				if t.matchesName(string(service.Name()), string(service.FullName()), params.Name) {
+					serviceInfo := t.convertServiceToInfo(service, file)
+					schemaInfo.Services = append(schemaInfo.Services, serviceInfo)
+					schemaInfo.Stats.TotalServices++
+					schemaInfo.Stats.TotalMethods += len(serviceInfo.Methods)
+				}
 			}
 		}
 
 		// Process enums
-		for i := 0; i < file.Enums().Len(); i++ {
-			enum := file.Enums().Get(i)
-			if t.shouldIncludeEnum(enum, params.EnumTypes) {
-				enumInfo := t.convertEnumToInfo(enum, file)
-				schemaInfo.Enums = append(schemaInfo.Enums, enumInfo)
-				schemaInfo.Stats.TotalEnums++
-				schemaInfo.Stats.TotalValues += len(enumInfo.Values)
+		if t.matchesType("enum", params.Type) {
+			for i := 0; i < file.Enums().Len(); i++ {
+				enum := file.Enums().Get(i)
+				if t.matchesName(string(enum.Name()), string(enum.FullName()), params.Name) {
+					enumInfo := t.convertEnumToInfo(enum, file)
+					schemaInfo.Enums = append(schemaInfo.Enums, enumInfo)
+					schemaInfo.Stats.TotalEnums++
+					schemaInfo.Stats.TotalValues += len(enumInfo.Values)
+				}
 			}
 		}
 	}
 
 	return schemaInfo, nil
-}
-
-// shouldIncludeMessage checks if a message should be included based on filters
-func (t *GetSchemaTool) shouldIncludeMessage(message protoreflect.MessageDescriptor, filters []string) bool {
-	if len(filters) == 0 {
-		return true
-	}
-	for _, filter := range filters {
-		if string(message.Name()) == filter {
-			return true
-		}
-	}
-	return false
-}
-
-// shouldIncludeService checks if a service should be included based on filters
-func (t *GetSchemaTool) shouldIncludeService(service protoreflect.ServiceDescriptor, filters []string) bool {
-	if len(filters) == 0 {
-		return true
-	}
-	for _, filter := range filters {
-		if string(service.Name()) == filter {
-			return true
-		}
-	}
-	return false
-}
-
-// shouldIncludeEnum checks if an enum should be included based on filters
-func (t *GetSchemaTool) shouldIncludeEnum(enum protoreflect.EnumDescriptor, filters []string) bool {
-	if len(filters) == 0 {
-		return true
-	}
-	for _, filter := range filters {
-		if string(enum.Name()) == filter {
-			return true
-		}
-	}
-	return false
 }
 
 // convertMessageToInfo converts a protobuf message to MessageInfo
