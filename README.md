@@ -1,5 +1,11 @@
 # Protobuf MCP Server
 
+[![CI](https://github.com/yuemori/protobuf-mcp-server/workflows/CI/badge.svg)](https://github.com/yuemori/protobuf-mcp-server/actions)
+[![CodeQL](https://github.com/yuemori/protobuf-mcp-server/workflows/CodeQL/badge.svg)](https://github.com/yuemori/protobuf-mcp-server/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/yuemori/protobuf-mcp-server)](https://goreportcard.com/report/github.com/yuemori/protobuf-mcp-server)
+[![Go Version](https://img.shields.io/badge/go-1.23-blue.svg)](https://golang.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A Model Context Protocol (MCP) server that provides semantic information about Protocol Buffers files, enabling AI assistants to work with protobuf schemas without RAG search, reducing token consumption and improving context efficiency.
 
 ## Features
