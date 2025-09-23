@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/yuemori/protobuf-mcp-server/internal/cli"
+	"github.com/yuemori/protobuf-mcp-server/internal/mcp"
 )
 
 func main() {
@@ -12,6 +13,7 @@ func main() {
 		fmt.Println("Usage: protobuf-mcp <command>")
 		fmt.Println("Commands:")
 		fmt.Println("  init [project-path]  - Initialize project configuration")
+		fmt.Println("  server               - Start MCP server")
 		os.Exit(1)
 	}
 
@@ -21,6 +23,11 @@ func main() {
 	switch command {
 	case "init":
 		if err := cli.InitCommand(args); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "server":
+		if err := mcp.StartServer(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

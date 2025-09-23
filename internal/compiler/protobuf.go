@@ -3,7 +3,9 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bufbuild/protocompile"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -39,6 +41,7 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 	// Wrap with standard imports for well-known types
 	resolverWithStdImports := protocompile.WithStandardImports(resolver)
 
+
 	return &ProtobufProject{
 		ProjectRoot:    projectRoot,
 		Config:         cfg,
@@ -59,15 +62,22 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 		return fmt.Errorf("no proto files found in configured paths")
 	}
 
+
 	// Create compiler with our resolver
 	compiler := protocompile.Compiler{
 		Resolver:       p.resolver,
-		MaxParallelism: 4, // Reasonable default
+		MaxParallelism: 4, // Restore normal parallelism
 		SourceInfoMode: protocompile.SourceInfoStandard,
 	}
 
-	// Compile all proto files
-	files, err := compiler.Compile(ctx, protoFiles...)
+
+	// Compile all proto files with dependency resolution
+	// Sort files to ensure dependencies are compiled first
+	sortedFiles := p.sortProtoFilesByDependencies(protoFiles)
+
+
+	// Compile all files together - protocompile will resolve dependencies automatically
+	files, err := compiler.Compile(ctx, sortedFiles...)
 	if err != nil {
 		return fmt.Errorf("failed to compile proto files: %w", err)
 	}
@@ -79,13 +89,13 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 		proto := &descriptorpb.FileDescriptorProto{}
 		path := file.Path()
 		proto.Name = &path
-		
+
 		// For now, just set the name. Full conversion would require
 		// iterating through services, messages, enums, etc.
 		// This is a simplified implementation for initial testing.
 		filesList[i] = proto
 	}
-	
+
 	p.CompiledProtos = &descriptorpb.FileDescriptorSet{
 		File: filesList,
 	}
@@ -97,7 +107,10 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 func (p *ProtobufProject) findProtoFiles() ([]string, error) {
 	var protoFiles []string
 
-	for _, protoPath := range p.Config.ProtoPaths {
+	// Search in both ProtoPaths and IncludePaths
+	searchPaths := append(p.Config.ProtoPaths, p.Config.IncludePaths...)
+
+	for _, protoPath := range searchPaths {
 		// Convert to absolute path relative to project root
 		absolutePath := filepath.Join(p.ProjectRoot, protoPath)
 
@@ -217,4 +230,23 @@ func (p *ProtobufProject) GetEnums() ([]*descriptorpb.EnumDescriptorProto, error
 	}
 
 	return enums, nil
+}
+
+// sortProtoFilesByDependencies sorts proto files by their dependencies
+// Google API files should be compiled before files that depend on them
+func (p *ProtobufProject) sortProtoFilesByDependencies(protoFiles []string) []string {
+	// Simple dependency sorting: Google API files first, then others
+	var googleFiles []string
+	var otherFiles []string
+
+	for _, file := range protoFiles {
+		if strings.HasPrefix(file, "google/") {
+			googleFiles = append(googleFiles, file)
+		} else {
+			otherFiles = append(otherFiles, file)
+		}
+	}
+
+	// Return Google API files first, then others
+	return append(googleFiles, otherFiles...)
 }

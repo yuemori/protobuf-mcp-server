@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package example.simple.v1;
+
+option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/simple/v1";
+
+import "types.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+// Simple greeting service for testing MCP functionality
+service GreetingService {
+  // Say hello to a user
+  rpc SayHello(HelloRequest) returns (HelloResponse) {
+    option (google.api.http) = {
+      post: "/v1/greeting/hello"
+      body: "*"
+    };
+  }
+
+  // Get user information
+  rpc GetUser(GetUserRequest) returns (User) {
+    option (google.api.http) = {
+      get: "/v1/users/{user_id}"
+    };
+  }
+
+  // Stream messages
+  rpc StreamMessages(StreamRequest) returns (stream MessageEvent);
+
+  // Bidirectional streaming
+  rpc Chat(stream ChatMessage) returns (stream ChatMessage);
+}
+
+// User management service
+service UserService {
+  // Create a new user
+  rpc CreateUser(CreateUserRequest) returns (User);
+  
+  // List users with pagination
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  
+  // Delete a user
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+}
+
+// Request message for saying hello
+message HelloRequest {
+  string name = 1;
+  string language = 2; // Optional language preference
+}
+
+// Response message for hello
+message HelloResponse {
+  string message = 1;
+  int64 timestamp = 2;
+  Status status = 3;
+}
+
+// Get user request
+message GetUserRequest {
+  string user_id = 1;
+  bool include_preferences = 2;
+}
+
+// Stream request
+message StreamRequest {
+  string channel = 1;
+  int32 max_messages = 2;
+}
+
+// Message event for streaming
+message MessageEvent {
+  string id = 1;
+  string content = 2;
+  string sender = 3;
+  int64 timestamp = 4;
+  EventType type = 5;
+}
+
+// Chat message for bidirectional streaming
+message ChatMessage {
+  string user_id = 1;
+  string content = 2;
+  int64 timestamp = 3;
+}
+
+// Create user request
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  UserRole role = 3;
+}
+
+// List users request with pagination
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string filter = 3; // Optional filter expression
+}
+
+// List users response
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Delete user request
+message DeleteUserRequest {
+  string user_id = 1;
+  bool force = 2; // Force deletion even if user has data
+}
