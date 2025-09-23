@@ -1,0 +1,35 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+
+# Logs
+*.log
+
+# Build artifacts
+/bin/
+/dist/
+
+# Dependencies
+vendor/
+
+# Claude and Serena configs (optional - remove if you want to track them)
+.claude/
+.serena/
