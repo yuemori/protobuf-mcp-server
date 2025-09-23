@@ -108,7 +108,7 @@ func TestInitCommandAlreadyInitialized(t *testing.T) {
 func TestInitCommandInvalidPath(t *testing.T) {
 	// Test with a path that should cause issues (very long path that might not be valid)
 	invalidPath := "/this/path/should/not/exist/and/should/cause/an/error/when/trying/to/create/directories"
-	
+
 	err := InitCommand([]string{invalidPath})
 	if err == nil {
 		t.Error("Expected error when using invalid path")
@@ -158,9 +158,9 @@ func TestInitCommandRelativePath(t *testing.T) {
 
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-		strings_contains_helper(s, substr))))
+			strings_contains_helper(s, substr))))
 }
 
 func strings_contains_helper(s, substr string) bool {

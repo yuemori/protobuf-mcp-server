@@ -11,7 +11,7 @@ import (
 // InitCommand handles the initialization of a new protobuf project
 func InitCommand(args []string) error {
 	var projectPath string
-	
+
 	// Determine project path
 	if len(args) > 0 {
 		projectPath = args[0]

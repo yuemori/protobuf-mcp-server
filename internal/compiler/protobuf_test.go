@@ -17,9 +17,9 @@ func TestNewProtobufProject(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	cfg := &config.ProjectConfig{
-		RootDirectory: ".",
-		IncludePaths:  []string{".", "testdata"},
-		ProtoPaths:    []string{"testdata"},
+		RootDirectory:   ".",
+		IncludePaths:    []string{".", "testdata"},
+		ProtoPaths:      []string{"testdata"},
 		IgnoredPatterns: []string{"*_test.proto"},
 	}
 
@@ -56,9 +56,9 @@ func TestFindProtoFiles(t *testing.T) {
 	projectRoot := filepath.Join(wd, "..", "..")
 
 	cfg := &config.ProjectConfig{
-		RootDirectory: ".",
-		IncludePaths:  []string{".", "testdata"},
-		ProtoPaths:    []string{"testdata/simple", "testdata/complex"},
+		RootDirectory:   ".",
+		IncludePaths:    []string{".", "testdata"},
+		ProtoPaths:      []string{"testdata/simple", "testdata/complex"},
 		IgnoredPatterns: []string{"*_test.proto"},
 	}
 
@@ -155,9 +155,9 @@ func TestCompileProtosIntegration(t *testing.T) {
 	}
 
 	cfg := &config.ProjectConfig{
-		RootDirectory: ".",
-		IncludePaths:  []string{".", "testdata"},
-		ProtoPaths:    []string{"testdata/simple"},
+		RootDirectory:   ".",
+		IncludePaths:    []string{".", "testdata"},
+		ProtoPaths:      []string{"testdata/simple"},
 		IgnoredPatterns: []string{"*_test.proto"},
 	}
 

@@ -21,9 +21,9 @@ type ProjectConfig struct {
 // DefaultProjectConfig returns a default configuration for a new project
 func DefaultProjectConfig() *ProjectConfig {
 	return &ProjectConfig{
-		RootDirectory: ".",
-		IncludePaths:  []string{"."},
-		ProtoPaths:    []string{"."},
+		RootDirectory:   ".",
+		IncludePaths:    []string{"."},
+		ProtoPaths:      []string{"."},
 		CompilerOptions: map[string]interface{}{},
 		IgnoredPatterns: []string{
 			"*_test.proto",
@@ -36,7 +36,7 @@ func DefaultProjectConfig() *ProjectConfig {
 // LoadProjectConfig loads project configuration from the given directory
 func LoadProjectConfig(projectRoot string) (*ProjectConfig, error) {
 	configPath := filepath.Join(projectRoot, ".protobuf-mcp", "project.yml")
-	
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read project config: %w", err)

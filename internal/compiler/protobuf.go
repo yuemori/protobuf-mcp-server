@@ -3,7 +3,6 @@ package compiler
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -41,7 +40,6 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 	// Wrap with standard imports for well-known types
 	resolverWithStdImports := protocompile.WithStandardImports(resolver)
 
-
 	return &ProtobufProject{
 		ProjectRoot:    projectRoot,
 		Config:         cfg,
@@ -62,7 +60,6 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 		return fmt.Errorf("no proto files found in configured paths")
 	}
 
-
 	// Create compiler with our resolver
 	compiler := protocompile.Compiler{
 		Resolver:       p.resolver,
@@ -70,11 +67,9 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 		SourceInfoMode: protocompile.SourceInfoStandard,
 	}
 
-
 	// Compile all proto files with dependency resolution
 	// Sort files to ensure dependencies are compiled first
 	sortedFiles := p.sortProtoFilesByDependencies(protoFiles)
-
 
 	// Compile all files together - protocompile will resolve dependencies automatically
 	files, err := compiler.Compile(ctx, sortedFiles...)

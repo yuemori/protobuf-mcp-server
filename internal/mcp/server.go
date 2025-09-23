@@ -93,6 +93,8 @@ func (s *MCPServer) Run(ctx context.Context) error {
 func (s *MCPServer) handleRequest(ctx context.Context, request *JSONRPCRequest) *JSONRPCResponse {
 	// Handle different methods
 	switch request.Method {
+	case "initialize":
+		return s.handleInitialize(request)
 	case "tools/list":
 		return s.handleToolsList(request)
 	case "tools/call":
@@ -106,6 +108,51 @@ func (s *MCPServer) handleRequest(ctx context.Context, request *JSONRPCRequest) 
 				Message: "Method not found",
 			},
 		}
+	}
+}
+
+// handleInitialize handles the initialize method
+func (s *MCPServer) handleInitialize(request *JSONRPCRequest) *JSONRPCResponse {
+	// Parse the initialize parameters
+	var params struct {
+		ProtocolVersion string `json:"protocolVersion"`
+		Capabilities    struct {
+			Tools map[string]interface{} `json:"tools"`
+		} `json:"capabilities"`
+		ClientInfo struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"clientInfo"`
+	}
+
+	if err := json.Unmarshal(request.Params, &params); err != nil {
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      request.ID,
+			Error: &JSONRPCError{
+				Code:    -32602,
+				Message: "Invalid params",
+				Data:    err.Error(),
+			},
+		}
+	}
+
+	// Return server capabilities
+	result := map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities": map[string]interface{}{
+			"tools": map[string]interface{}{},
+		},
+		"serverInfo": map[string]interface{}{
+			"name":    "protobuf-mcp-server",
+			"version": "1.0.0",
+		},
+	}
+
+	return &JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      request.ID,
+		Result:  result,
 	}
 }
 
