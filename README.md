@@ -311,7 +311,6 @@ protobuf-mcp init
 
 ### Environment Variables
 
-- `PROTOBUF_MCP_LOG_LEVEL`: Set log level (debug, info, warn, error)
 - `PROTOBUF_MCP_MAX_PARALLELISM`: Set maximum parallel compilation (default: 4)
 
 ## Supported Features
@@ -364,19 +363,8 @@ protobuf-mcp init
 
 ### Debug Mode
 
-Enable debug logging using environment variables:
-
-```bash
-export PROTOBUF_MCP_LOG_LEVEL=debug
-protobuf-mcp server
-```
-
-This will provide detailed information about:
-
-- Proto file discovery and pattern matching
-- Compilation process
-- Import path resolution
-- Error details
+Currently, detailed debug information is not available through environment variables.
+For troubleshooting, check the error messages and ensure your configuration is correct.
 
 ## CLI Commands
 

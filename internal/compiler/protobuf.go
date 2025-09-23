@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/bufbuild/protocompile"
@@ -13,6 +14,16 @@ import (
 
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
 )
+
+// getMaxParallelism returns the maximum parallelism from environment variable or default
+func getMaxParallelism() int {
+	if val := os.Getenv("PROTOBUF_MCP_MAX_PARALLELISM"); val != "" {
+		if parallelism, err := strconv.Atoi(val); err == nil && parallelism > 0 {
+			return parallelism
+		}
+	}
+	return 4 // default value
+}
 
 // ProtobufProject represents a compiled protobuf project
 type ProtobufProject struct {
@@ -158,7 +169,7 @@ func CompileProtos(ctx context.Context, protoFiles []string, importPaths []strin
 	// Create compiler with our resolver
 	compiler := protocompile.Compiler{
 		Resolver:       resolverWithStdImports,
-		MaxParallelism: 4,
+		MaxParallelism: getMaxParallelism(),
 		SourceInfoMode: protocompile.SourceInfoStandard,
 	}
 
