@@ -23,7 +23,7 @@ func TestNewProtobufProject(t *testing.T) {
 package test;
 message TestMessage {
   string name = 1;
-}`), 0644)
+}`), 0o644)
 	if err != nil {
 		t.Fatalf("Failed to create test proto file: %v", err)
 	}
@@ -103,14 +103,27 @@ func TestCompileProtosWithImportPaths(t *testing.T) {
 	// Test compilation with import paths using the standalone function
 	ctx := context.Background()
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("Failed to restore working directory: %v", err)
+		}
+	})
+
 	// Test with simple proto files - use relative paths
 	protoFiles := []string{
 		"api.proto",
 		"types.proto",
 	}
-	importPaths := []string{"internal/compiler/testdata/simple"}
+	importPaths := []string{"."}
 
-	compiledProtos, err := CompileProtos(ctx, protoFiles, importPaths)
+	rootDir := filepath.Join(cwd, "testdata/simple")
+
+	compiledProtos, err := CompileProtos(ctx, rootDir, protoFiles, importPaths)
 	if err != nil {
 		t.Fatalf("Compilation failed: %v", err)
 	}
@@ -142,14 +155,27 @@ func TestCompileProtosWithNestedImportPaths(t *testing.T) {
 	// Test compilation with nested import paths
 	ctx := context.Background()
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("Failed to restore working directory: %v", err)
+		}
+	})
+
 	// Test with nested proto files - use relative paths
 	protoFiles := []string{
-		"my-service/api/v1/hoge.proto",
-		"my-service/api/v1/foo.proto",
+		"proto/my-service/api/v1/hoge.proto",
+		"proto/my-service/api/v1/foo.proto",
 	}
-	importPaths := []string{"internal/compiler/testdata/nested/proto"}
+	importPaths := []string{"proto"}
 
-	compiledProtos, err := CompileProtos(ctx, protoFiles, importPaths)
+	rootDir := filepath.Join(cwd, "testdata/nested")
+
+	compiledProtos, err := CompileProtos(ctx, rootDir, protoFiles, importPaths)
 	if err != nil {
 		t.Fatalf("Compilation failed: %v", err)
 	}

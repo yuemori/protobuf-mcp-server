@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/bufbuild/protocompile"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -81,96 +80,51 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 }
 
 // CompileProtos compiles proto files with the given configuration
-func CompileProtos(ctx context.Context, protoFiles []string, importPaths []string) (*descriptorpb.FileDescriptorSet, error) {
+func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, importPaths []string) (*descriptorpb.FileDescriptorSet, error) {
 	if len(protoFiles) == 0 {
 		return nil, fmt.Errorf("no proto files found in configured paths")
 	}
 
-	// Create source resolver with import paths
-	var resolvedImportPaths []string
+	var absImportPaths []string
 	for _, importPath := range importPaths {
 		if filepath.IsAbs(importPath) {
 			// Absolute path - use as is
-			resolvedImportPaths = append(resolvedImportPaths, importPath)
+			absImportPaths = append(absImportPaths, importPath)
 		} else {
-			// Relative path - resolve from current working directory
-			wd, err := os.Getwd()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get working directory: %w", err)
-			}
-			// Check if the path exists relative to current directory
-			fullPath := filepath.Join(wd, importPath)
-			if _, err := os.Stat(fullPath); err == nil {
-				resolvedImportPaths = append(resolvedImportPaths, fullPath)
-			} else {
-				// If not found, try relative to project root (go up to find testdata)
-				projectRoot := wd
-				for {
-					testPath := filepath.Join(projectRoot, importPath)
-					if _, err := os.Stat(testPath); err == nil {
-						resolvedImportPaths = append(resolvedImportPaths, testPath)
-						break
-					}
-					parent := filepath.Dir(projectRoot)
-					if parent == projectRoot {
-						// Reached root, use original path
-						resolvedImportPaths = append(resolvedImportPaths, fullPath)
-						break
-					}
-					projectRoot = parent
-				}
-			}
+			// Relative path - resolve from rootDir
+			absImportPaths = append(absImportPaths, filepath.Join(rootDir, importPath))
 		}
 	}
 
 	resolver := &protocompile.SourceResolver{
-		ImportPaths: resolvedImportPaths,
+		ImportPaths: absImportPaths,
 	}
 
 	// Wrap with standard imports for well-known types
 	resolverWithStdImports := protocompile.WithStandardImports(resolver)
 
-	// Convert proto files to relative paths based on import paths
-	var relativeProtoFiles []string
-	for _, protoFile := range protoFiles {
-		if filepath.IsAbs(protoFile) {
-			// Find which import path this file belongs to
-			found := false
-			for _, importPath := range resolvedImportPaths {
-				if relPath, err := filepath.Rel(importPath, protoFile); err == nil && !strings.HasPrefix(relPath, "..") {
-					relativeProtoFiles = append(relativeProtoFiles, relPath)
-					found = true
-					break
-				}
-			}
-			if !found {
-				// If not found in any import path, use the filename only
-				relativeProtoFiles = append(relativeProtoFiles, filepath.Base(protoFile))
-			}
-		} else {
-			// Already relative, use as is
-			relativeProtoFiles = append(relativeProtoFiles, protoFile)
-		}
-	}
-
-	// Change working directory to the first import path for protocompile
-	if len(resolvedImportPaths) > 0 {
-		originalWd, err := os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current working directory: %w", err)
-		}
-		defer os.Chdir(originalWd)
-
-		if err := os.Chdir(resolvedImportPaths[0]); err != nil {
-			return nil, fmt.Errorf("failed to change to import path directory: %w", err)
-		}
-	}
-
 	// Create compiler with our resolver
 	compiler := protocompile.Compiler{
 		Resolver:       resolverWithStdImports,
 		MaxParallelism: getMaxParallelism(),
-		SourceInfoMode: protocompile.SourceInfoStandard,
+		SourceInfoMode: protocompile.SourceInfoExtraOptionLocations,
+	}
+
+	var absProtoFiles []string
+
+	for _, file := range protoFiles {
+		absProtoFiles = append(absProtoFiles, filepath.Join(rootDir, file))
+	}
+
+	var relativeProtoFiles []string
+	for _, file := range absProtoFiles {
+		for _, importPath := range absImportPaths {
+			relPath, err := filepath.Rel(importPath, file)
+			if err == nil && !filepath.IsAbs(relPath) && relPath != file {
+				relativeProtoFiles = append(relativeProtoFiles, relPath)
+				break
+			}
+		}
 	}
 
 	// Compile all files together - protocompile will resolve dependencies automatically
@@ -207,7 +161,7 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 	}
 
 	// Use the standalone compile function with proto files (already relative)
-	compiledProtos, err := CompileProtos(ctx, p.protoFiles, importPaths)
+	compiledProtos, err := CompileProtos(ctx, p.ProjectRoot, p.protoFiles, importPaths)
 	if err != nil {
 		return err
 	}
