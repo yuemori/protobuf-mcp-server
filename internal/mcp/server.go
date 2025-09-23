@@ -8,12 +8,14 @@ import (
 	"log"
 	"os"
 
+	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
 	"github.com/yuemori/protobuf-mcp-server/internal/tools"
 )
 
 // MCPServer represents the MCP JSON-RPC server
 type MCPServer struct {
-	tools map[string]Tool
+	tools   map[string]Tool
+	project *compiler.ProtobufProject
 }
 
 // Tool represents an MCP tool interface
@@ -21,6 +23,12 @@ type Tool interface {
 	Name() string
 	Description() string
 	Execute(ctx context.Context, params json.RawMessage) (interface{}, error)
+}
+
+// ProjectAwareTool represents a tool that can set the current project
+type ProjectAwareTool interface {
+	Tool
+	SetProject(project *compiler.ProtobufProject)
 }
 
 // JSONRPCRequest represents a JSON-RPC request
@@ -52,8 +60,16 @@ func NewMCPServer() *MCPServer {
 		tools: make(map[string]Tool),
 	}
 
-	// Register available tools
-	server.RegisterTool(tools.NewActivateProjectTool())
+	// Create and register tools
+	activateTool := tools.NewActivateProjectTool()
+	listServicesTool := &tools.ListServicesTool{}
+
+	// Set server reference in activate tool
+	activateTool.SetServer(server)
+
+	// Register tools
+	server.RegisterTool(activateTool)
+	server.RegisterTool(listServicesTool)
 
 	return server
 }
@@ -61,6 +77,28 @@ func NewMCPServer() *MCPServer {
 // RegisterTool registers a tool with the server
 func (s *MCPServer) RegisterTool(tool Tool) {
 	s.tools[tool.Name()] = tool
+
+	// If tool is project-aware, set the current project
+	if projectAwareTool, ok := tool.(ProjectAwareTool); ok {
+		projectAwareTool.SetProject(s.project)
+	}
+}
+
+// SetProject sets the current project
+func (s *MCPServer) SetProject(project *compiler.ProtobufProject) {
+	s.project = project
+
+	// Update all project-aware tools
+	for _, tool := range s.tools {
+		if projectAwareTool, ok := tool.(ProjectAwareTool); ok {
+			projectAwareTool.SetProject(project)
+		}
+	}
+}
+
+// GetProject returns the current project
+func (s *MCPServer) GetProject() *compiler.ProtobufProject {
+	return s.project
 }
 
 // Run starts the MCP server and processes JSON-RPC requests from stdin

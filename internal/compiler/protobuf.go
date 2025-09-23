@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bufbuild/protocompile"
+	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
@@ -81,14 +82,8 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 	filesList := make([]*descriptorpb.FileDescriptorProto, len(files))
 	for i, file := range files {
 		// Each file implements protoreflect.FileDescriptor
-		proto := &descriptorpb.FileDescriptorProto{}
-		path := file.Path()
-		proto.Name = &path
-
-		// For now, just set the name. Full conversion would require
-		// iterating through services, messages, enums, etc.
-		// This is a simplified implementation for initial testing.
-		filesList[i] = proto
+		// Convert to FileDescriptorProto to preserve all information
+		filesList[i] = protodesc.ToFileDescriptorProto(file)
 	}
 
 	p.CompiledProtos = &descriptorpb.FileDescriptorSet{

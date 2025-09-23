@@ -74,7 +74,7 @@ message TestResponse {
 		{
 			name: "project not initialized",
 			params: ActivateProjectParams{
-				ProjectPath: tempDir,
+				ProjectPath: "/non/existent/project",
 			},
 			expectSuccess: false,
 			expectError:   false,

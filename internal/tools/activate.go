@@ -11,11 +11,28 @@ import (
 )
 
 // ActivateProjectTool implements the activate_project MCP tool
-type ActivateProjectTool struct{}
+type ActivateProjectTool struct {
+	project *compiler.ProtobufProject
+	server  interface {
+		SetProject(*compiler.ProtobufProject)
+	}
+}
 
 // NewActivateProjectTool creates a new ActivateProjectTool instance
 func NewActivateProjectTool() *ActivateProjectTool {
 	return &ActivateProjectTool{}
+}
+
+// SetProject sets the current project
+func (t *ActivateProjectTool) SetProject(project *compiler.ProtobufProject) {
+	t.project = project
+}
+
+// SetServer sets the server interface
+func (t *ActivateProjectTool) SetServer(server interface {
+	SetProject(*compiler.ProtobufProject)
+}) {
+	t.server = server
 }
 
 // Name returns the tool name
@@ -95,6 +112,17 @@ func (t *ActivateProjectTool) Execute(ctx context.Context, params json.RawMessag
 			Success: false,
 			Message: fmt.Sprintf("Failed to compile proto files: %v", err),
 		}, nil
+	}
+
+	// Set as current project in global manager
+	GetProjectManager().SetCurrentProject(protobufProject)
+
+	// Set project in tool
+	t.project = protobufProject
+
+	// Set project in server if available
+	if t.server != nil {
+		t.server.SetProject(protobufProject)
 	}
 
 	// Get statistics

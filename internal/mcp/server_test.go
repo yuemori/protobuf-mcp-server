@@ -61,14 +61,23 @@ func TestMCPServer_HandleToolsList(t *testing.T) {
 		t.Fatalf("Expected tools to be array, got %T", result["tools"])
 	}
 
-	if len(toolsList) != 1 {
-		t.Errorf("Expected 1 tool, got %d", len(toolsList))
+	if len(toolsList) != 2 {
+		t.Errorf("Expected 2 tools, got %d", len(toolsList))
 	}
 
-	toolInfo := toolsList[0]
+	// Check that both tools are present
+	toolNames := make(map[string]bool)
+	for _, toolInfo := range toolsList {
+		if name, ok := toolInfo["name"].(string); ok {
+			toolNames[name] = true
+		}
+	}
 
-	if toolInfo["name"] != "activate_project" {
-		t.Errorf("Expected tool name activate_project, got %s", toolInfo["name"])
+	if !toolNames["activate_project"] {
+		t.Errorf("Expected activate_project tool to be present")
+	}
+	if !toolNames["list_services"] {
+		t.Errorf("Expected list_services tool to be present")
 	}
 }
 
