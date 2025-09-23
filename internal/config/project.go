@@ -32,18 +32,57 @@ func LoadProjectConfig(projectRoot string) (*ProjectConfig, error) {
 		return nil, fmt.Errorf("failed to read project config: %w", err)
 	}
 
+	// Preprocess the YAML to handle unquoted glob patterns
+	processedData := preprocessYAML(string(data))
+
 	var config ProjectConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yaml.Unmarshal([]byte(processedData), &config); err != nil {
 		return nil, fmt.Errorf("failed to parse project config: %w", err)
 	}
 
 	return &config, nil
 }
 
+// preprocessYAML handles unquoted glob patterns in YAML
+func preprocessYAML(yamlContent string) string {
+	lines := strings.Split(yamlContent, "\n")
+	var processedLines []string
+	
+	for _, line := range lines {
+		// Check if line contains unquoted glob patterns
+		if strings.Contains(line, "- ") && (strings.Contains(line, "**") || strings.Contains(line, "*")) {
+			// Find the pattern after "- "
+			parts := strings.SplitN(line, "- ", 2)
+			if len(parts) == 2 {
+				pattern := strings.TrimSpace(parts[1])
+				// Only quote if it's not already quoted and contains special characters
+				if !strings.HasPrefix(pattern, "\"") && !strings.HasPrefix(pattern, "'") {
+					if strings.Contains(pattern, "**") || strings.Contains(pattern, "*") {
+						pattern = "\"" + pattern + "\""
+					}
+				}
+				processedLines = append(processedLines, parts[0]+"- "+pattern)
+				continue
+			}
+		}
+		processedLines = append(processedLines, line)
+	}
+	
+	return strings.Join(processedLines, "\n")
+}
+
 // SaveProjectConfig saves the project configuration to the given directory
 func SaveProjectConfig(projectRoot string, config *ProjectConfig) error {
 	configPath := filepath.Join(projectRoot, ".protobuf-mcp.yml")
-	data, err := yaml.Marshal(config)
+
+	// Create a custom YAML structure to ensure proper quoting
+	yamlData := struct {
+		ProtoFiles []string `yaml:"proto_files"`
+	}{
+		ProtoFiles: config.ProtoFiles,
+	}
+
+	data, err := yaml.Marshal(yamlData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -79,7 +118,7 @@ func ResolveProtoFiles(config *ProjectConfig, projectRoot string) ([]string, err
 		} else {
 			// Relative path: resolve from project root
 			fullPattern := filepath.Join(projectRoot, pattern)
-			
+
 			// Handle ** pattern by walking the directory tree
 			if strings.Contains(pattern, "**") {
 				matches, err := resolveRecursivePattern(pattern, projectRoot)
@@ -110,7 +149,7 @@ func ResolveProtoFiles(config *ProjectConfig, projectRoot string) ([]string, err
 // resolveRecursivePattern handles ** patterns by walking the directory tree
 func resolveRecursivePattern(pattern, projectRoot string) ([]string, error) {
 	var matches []string
-	
+
 	// Find the ** pattern in the string
 	starStarIndex := strings.Index(pattern, "**")
 	if starStarIndex == -1 {
@@ -118,38 +157,38 @@ func resolveRecursivePattern(pattern, projectRoot string) ([]string, error) {
 		fullPattern := filepath.Join(projectRoot, pattern)
 		return filepath.Glob(fullPattern)
 	}
-	
+
 	baseDir := filepath.Join(projectRoot, strings.TrimSuffix(pattern[:starStarIndex], "/"))
 	filePattern := strings.TrimPrefix(pattern[starStarIndex+2:], "/")
-	
+
 	// Check if baseDir exists
 	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 		return matches, nil
 	}
-	
+
 	// Walk the directory tree
 	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		if !info.IsDir() {
 			// For ** patterns, we need to check if the file matches the pattern
 			// Since we're walking recursively, we can use the filename directly
 			filename := filepath.Base(path)
-			
+
 			matched, err := filepath.Match(filePattern, filename)
 			if err != nil {
 				return err
 			}
-			
+
 			if matched {
 				matches = append(matches, path)
 			}
 		}
-		
+
 		return nil
 	})
-	
+
 	return matches, err
 }
