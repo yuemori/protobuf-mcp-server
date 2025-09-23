@@ -157,6 +157,65 @@ show_logs: false
 
 ## Usage
 
+### Project Initialization
+
+Before using the MCP server, you need to initialize your protobuf project:
+
+#### Initialize a New Project
+
+```bash
+# Navigate to your protobuf project directory
+cd /path/to/your/protobuf/project
+
+# Initialize using go run (recommended)
+go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init
+
+# Or if installed globally
+protobuf-mcp init
+```
+
+This creates a `.protobuf-mcp/project.yml` configuration file in your project directory.
+
+#### Configuration File
+
+The `init` command generates a configuration file with the following structure:
+
+```yaml
+root_directory: . # Project root directory
+include_paths: # Paths to search for imported protos
+  - .
+  - google # For Google API protos
+proto_paths: # Paths containing your proto files
+  - .
+  - google
+compiler_options: {} # Additional compiler options
+ignored_patterns: # Patterns to ignore
+  - "*_test.proto"
+  - "tmp/**"
+show_logs: false # Enable debug logging
+```
+
+#### Customize Configuration
+
+You can edit `.protobuf-mcp/project.yml` to customize:
+
+- **include_paths**: Add paths where imported `.proto` files are located
+- **proto_paths**: Specify directories containing your project's `.proto` files
+- **ignored_patterns**: Add patterns to ignore specific files
+- **show_logs**: Enable debug logging for troubleshooting
+
+#### Re-initialize Project
+
+To update the configuration or re-initialize:
+
+```bash
+# Re-initialize with updated settings
+go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init
+
+# Or if installed globally
+protobuf-mcp init
+```
+
 ### Available Tools
 
 The MCP server provides the following tools:
@@ -351,6 +410,67 @@ This will provide detailed information about:
 - Compilation process
 - Import resolution
 - Error details
+
+## CLI Commands
+
+The protobuf-mcp server provides several CLI commands for project management:
+
+### `init` - Initialize Project
+
+Initialize a new protobuf project with configuration.
+
+```bash
+# Initialize project
+go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest init
+
+# Or if installed globally
+protobuf-mcp init
+```
+
+**Options:**
+
+- Creates `.protobuf-mcp/project.yml` configuration file
+- Detects existing configuration and prompts for overwrite
+- Sets up default paths and patterns
+
+**Example Output:**
+
+```
+Initializing protobuf project...
+Created .protobuf-mcp/project.yml
+Project initialized successfully!
+```
+
+### `server` - Start MCP Server
+
+Start the MCP server for use with Claude Code or Cursor.
+
+```bash
+# Start server
+go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest server
+
+# Or if installed globally
+protobuf-mcp server
+```
+
+**Features:**
+
+- JSON-RPC over stdio communication
+- Automatic project detection
+- Real-time protobuf compilation
+- Error handling and logging
+
+### `help` - Show Help
+
+Display help information and available commands.
+
+```bash
+# Show help
+go run github.com/yuemori/protobuf-mcp-server/cmd/protobuf-mcp@latest --help
+
+# Or if installed globally
+protobuf-mcp --help
+```
 
 ## Development
 
