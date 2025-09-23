@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package example.complex.common.v1;
+
+option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/complex/common/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// Common pagination request
+message PaginationRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string sort_by = 3;
+  SortOrder sort_order = 4;
+}
+
+// Common pagination response
+message PaginationResponse {
+  string next_page_token = 1;
+  string prev_page_token = 2;
+  int32 total_count = 3;
+  int32 page_size = 4;
+}
+
+// Sort order enumeration
+enum SortOrder {
+  SORT_ORDER_UNSPECIFIED = 0;
+  SORT_ORDER_ASC = 1;
+  SORT_ORDER_DESC = 2;
+}
+
+// Common error information
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+// Generic metadata wrapper
+message Metadata {
+  map<string, string> labels = 1;
+  map<string, string> annotations = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  string version = 5;
+}
+
+// Health check response
+message HealthStatus {
+  Status status = 1;
+  map<string, string> checks = 2;
+  google.protobuf.Timestamp checked_at = 3;
+  google.protobuf.Duration uptime = 4;
+}
+
+// Status enumeration
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_HEALTHY = 1;
+  STATUS_UNHEALTHY = 2;
+  STATUS_DEGRADED = 3;
+  STATUS_MAINTENANCE = 4;
+}

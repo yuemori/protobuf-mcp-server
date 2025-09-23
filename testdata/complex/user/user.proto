@@ -1,0 +1,284 @@
+syntax = "proto3";
+
+package example.complex.user.v1;
+
+option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/complex/user/v1";
+
+import "testdata/complex/imports/common.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+
+// Advanced user management service with complex nested structures
+service AdvancedUserService {
+  // Create user with complex validation
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  
+  // Update user with field mask
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  
+  // Get user with optional includes
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  
+  // Search users with complex filters
+  rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
+  
+  // Batch operations
+  rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
+  rpc BatchUpdateUsers(BatchUpdateUsersRequest) returns (BatchUpdateUsersResponse);
+}
+
+// Complex user entity with nested structures
+message ComplexUser {
+  string id = 1;
+  Profile profile = 2;
+  Account account = 3;
+  repeated Permission permissions = 4;
+  Settings settings = 5;
+  ActivityLog activity_log = 6;
+  example.complex.common.v1.Metadata metadata = 7;
+  
+  // Nested structures
+  message Profile {
+    string display_name = 1;
+    string bio = 2;
+    string avatar_url = 3;
+    ContactInfo contact_info = 4;
+    repeated SocialLink social_links = 5;
+    
+    // Deeply nested contact information
+    message ContactInfo {
+      string email = 1;
+      string phone = 2;
+      Address address = 3;
+      
+      message Address {
+        string line1 = 1;
+        string line2 = 2;
+        string city = 3;
+        string region = 4;
+        string postal_code = 5;
+        string country_code = 6;
+      }
+    }
+    
+    message SocialLink {
+      Platform platform = 1;
+      string url = 2;
+      bool verified = 3;
+      
+      enum Platform {
+        PLATFORM_UNSPECIFIED = 0;
+        PLATFORM_TWITTER = 1;
+        PLATFORM_LINKEDIN = 2;
+        PLATFORM_GITHUB = 3;
+        PLATFORM_WEBSITE = 4;
+      }
+    }
+  }
+  
+  message Account {
+    AccountType type = 1;
+    AccountStatus status = 2;
+    google.protobuf.Timestamp created_at = 3;
+    google.protobuf.Timestamp last_login_at = 4;
+    repeated string roles = 5;
+    Subscription subscription = 6;
+    
+    enum AccountType {
+      ACCOUNT_TYPE_UNSPECIFIED = 0;
+      ACCOUNT_TYPE_FREE = 1;
+      ACCOUNT_TYPE_PREMIUM = 2;
+      ACCOUNT_TYPE_ENTERPRISE = 3;
+    }
+    
+    enum AccountStatus {
+      ACCOUNT_STATUS_UNSPECIFIED = 0;
+      ACCOUNT_STATUS_ACTIVE = 1;
+      ACCOUNT_STATUS_SUSPENDED = 2;
+      ACCOUNT_STATUS_CLOSED = 3;
+    }
+    
+    message Subscription {
+      string plan_id = 1;
+      google.protobuf.Timestamp starts_at = 2;
+      google.protobuf.Timestamp ends_at = 3;
+      bool auto_renew = 4;
+      map<string, string> features = 5;
+    }
+  }
+  
+  message Permission {
+    string resource = 1;
+    repeated Action actions = 2;
+    repeated Condition conditions = 3;
+    
+    enum Action {
+      ACTION_UNSPECIFIED = 0;
+      ACTION_READ = 1;
+      ACTION_WRITE = 2;
+      ACTION_DELETE = 3;
+      ACTION_ADMIN = 4;
+    }
+    
+    message Condition {
+      string field = 1;
+      Operator operator = 2;
+      repeated string values = 3;
+      
+      enum Operator {
+        OPERATOR_UNSPECIFIED = 0;
+        OPERATOR_EQUALS = 1;
+        OPERATOR_NOT_EQUALS = 2;
+        OPERATOR_IN = 3;
+        OPERATOR_NOT_IN = 4;
+        OPERATOR_CONTAINS = 5;
+      }
+    }
+  }
+  
+  message Settings {
+    NotificationSettings notifications = 1;
+    PrivacySettings privacy = 2;
+    map<string, FeatureSetting> features = 3;
+    
+    message NotificationSettings {
+      bool email_enabled = 1;
+      bool push_enabled = 2;
+      bool sms_enabled = 3;
+      repeated NotificationType types = 4;
+      
+      enum NotificationType {
+        NOTIFICATION_TYPE_UNSPECIFIED = 0;
+        NOTIFICATION_TYPE_SECURITY = 1;
+        NOTIFICATION_TYPE_MARKETING = 2;
+        NOTIFICATION_TYPE_PRODUCT = 3;
+        NOTIFICATION_TYPE_BILLING = 4;
+      }
+    }
+    
+    message PrivacySettings {
+      ProfileVisibility profile_visibility = 1;
+      bool show_online_status = 2;
+      bool allow_search = 3;
+      
+      enum ProfileVisibility {
+        PROFILE_VISIBILITY_UNSPECIFIED = 0;
+        PROFILE_VISIBILITY_PUBLIC = 1;
+        PROFILE_VISIBILITY_FRIENDS = 2;
+        PROFILE_VISIBILITY_PRIVATE = 3;
+      }
+    }
+    
+    message FeatureSetting {
+      bool enabled = 1;
+      map<string, string> configuration = 2;
+    }
+  }
+  
+  message ActivityLog {
+    repeated Activity recent_activities = 1;
+    ActivitySummary summary = 2;
+    
+    message Activity {
+      string id = 1;
+      ActivityType type = 2;
+      string description = 3;
+      google.protobuf.Timestamp timestamp = 4;
+      map<string, string> context = 5;
+      
+      enum ActivityType {
+        ACTIVITY_TYPE_UNSPECIFIED = 0;
+        ACTIVITY_TYPE_LOGIN = 1;
+        ACTIVITY_TYPE_LOGOUT = 2;
+        ACTIVITY_TYPE_PASSWORD_CHANGE = 3;
+        ACTIVITY_TYPE_PROFILE_UPDATE = 4;
+        ACTIVITY_TYPE_SETTINGS_CHANGE = 5;
+      }
+    }
+    
+    message ActivitySummary {
+      int32 total_activities = 1;
+      int32 login_count = 2;
+      google.protobuf.Timestamp last_activity = 3;
+      map<string, int32> activity_counts = 4;
+    }
+  }
+}
+
+// Request messages
+message CreateUserRequest {
+  ComplexUser user = 1;
+  bool send_welcome_email = 2;
+  repeated string initial_roles = 3;
+}
+
+message CreateUserResponse {
+  ComplexUser user = 1;
+  example.complex.common.v1.Error error = 2;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  ComplexUser user = 2;
+  google.protobuf.FieldMask update_mask = 3;
+}
+
+message UpdateUserResponse {
+  ComplexUser user = 1;
+  example.complex.common.v1.Error error = 2;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+  repeated string include = 2; // Fields to include (profile, account, permissions, etc.)
+}
+
+message GetUserResponse {
+  ComplexUser user = 1;
+  example.complex.common.v1.Error error = 2;
+}
+
+message SearchUsersRequest {
+  string query = 1;
+  repeated Filter filters = 2;
+  example.complex.common.v1.PaginationRequest pagination = 3;
+  
+  message Filter {
+    string field = 1;
+    string value = 2;
+    FilterOperator operator = 3;
+    
+    enum FilterOperator {
+      FILTER_OPERATOR_UNSPECIFIED = 0;
+      FILTER_OPERATOR_EQUALS = 1;
+      FILTER_OPERATOR_CONTAINS = 2;
+      FILTER_OPERATOR_STARTS_WITH = 3;
+      FILTER_OPERATOR_GREATER_THAN = 4;
+      FILTER_OPERATOR_LESS_THAN = 5;
+    }
+  }
+}
+
+message SearchUsersResponse {
+  repeated ComplexUser users = 1;
+  example.complex.common.v1.PaginationResponse pagination = 2;
+  example.complex.common.v1.Error error = 3;
+}
+
+message BatchGetUsersRequest {
+  repeated string user_ids = 1;
+  repeated string include = 2;
+}
+
+message BatchGetUsersResponse {
+  map<string, ComplexUser> users = 1;
+  repeated example.complex.common.v1.Error errors = 2;
+}
+
+message BatchUpdateUsersRequest {
+  repeated UpdateUserRequest updates = 1;
+}
+
+message BatchUpdateUsersResponse {
+  repeated UpdateUserResponse results = 1;
+}
