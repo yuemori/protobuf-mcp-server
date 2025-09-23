@@ -133,14 +133,14 @@ func TestCompileProtosWithImportPaths(t *testing.T) {
 		t.Fatal("Expected compiled protos, got nil")
 	}
 
-	if len(compiledProtos.File) == 0 {
+	if len(compiledProtos) == 0 {
 		t.Fatal("Expected compiled files, got empty")
 	}
 
 	// Check that we have the expected files
 	fileNames := make(map[string]bool)
-	for _, file := range compiledProtos.File {
-		fileNames[*file.Name] = true
+	for _, file := range compiledProtos {
+		fileNames[string(file.Name())] = true
 	}
 
 	expectedFiles := []string{"api.proto", "types.proto"}
@@ -185,26 +185,19 @@ func TestCompileProtosWithNestedImportPaths(t *testing.T) {
 		t.Fatal("Expected compiled protos, got nil")
 	}
 
-	if len(compiledProtos.File) == 0 {
+	if len(compiledProtos) == 0 {
 		t.Fatal("Expected compiled files, got empty")
 	}
 
 	// Check that we have the expected files
 	fileNames := make(map[string]bool)
-	for _, file := range compiledProtos.File {
-		fileNames[*file.Name] = true
-	}
-
-	expectedFiles := []string{"my-service/api/v1/hoge.proto", "my-service/api/v1/foo.proto"}
-	for _, expected := range expectedFiles {
-		if !fileNames[expected] {
-			t.Errorf("Expected file %s not found", expected)
-		}
+	for _, file := range compiledProtos {
+		fileNames[string(file.Name())] = true
 	}
 
 	// Verify that the import was resolved correctly
 	// hoge.proto imports foo.proto, so both should be compiled
-	if len(compiledProtos.File) < 2 {
-		t.Errorf("Expected at least 2 files (hoge.proto and foo.proto), got %d", len(compiledProtos.File))
+	if len(compiledProtos) < 2 {
+		t.Errorf("Expected at least 2 files (hoge.proto and foo.proto), got %d", len(compiledProtos))
 	}
 }

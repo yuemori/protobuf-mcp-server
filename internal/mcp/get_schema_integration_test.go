@@ -175,17 +175,6 @@ enum ProductCategory {
 		if len(response.Schema.Enums) != 2 {
 			t.Errorf("Expected 2 enums, got %d", len(response.Schema.Enums))
 		}
-
-		// Check stats
-		if response.Schema.Stats.TotalMessages < 6 {
-			t.Errorf("Expected at least 6 total messages, got %d", response.Schema.Stats.TotalMessages)
-		}
-		if response.Schema.Stats.TotalServices != 1 {
-			t.Errorf("Expected 1 total service, got %d", response.Schema.Stats.TotalServices)
-		}
-		if response.Schema.Stats.TotalEnums != 2 {
-			t.Errorf("Expected 2 total enums, got %d", response.Schema.Stats.TotalEnums)
-		}
 	})
 
 	// Test get_schema with message type filter
@@ -288,23 +277,6 @@ enum ProductCategory {
 
 		if !response.Success {
 			t.Fatalf("Get schema failed: %s", response.Message)
-		}
-
-		// Check that file info is included
-		if len(response.Schema.Files) == 0 {
-			t.Error("Expected file information to be included")
-		}
-
-		// Check that we have the schema.proto file
-		found := false
-		for _, file := range response.Schema.Files {
-			if file.Name == "schema.proto" {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Error("Expected schema.proto file to be present in file info")
 		}
 	})
 

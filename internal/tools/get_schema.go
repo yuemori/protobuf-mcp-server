@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bufbuild/protocompile/linker"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -59,8 +58,6 @@ type SchemaInfo struct {
 	Messages []MessageInfo `json:"messages"`
 	Services []ServiceInfo `json:"services"`
 	Enums    []EnumInfo    `json:"enums"`
-	Files    []FileInfo    `json:"files,omitempty"`
-	Stats    StatsInfo     `json:"stats"`
 }
 
 // MessageInfo represents detailed information about a protobuf message
@@ -106,27 +103,7 @@ type EnumValueInfo struct {
 	Options     []OptionInfo `json:"options,omitempty"`
 }
 
-// FileInfo represents information about a protobuf file
-type FileInfo struct {
-	Name         string       `json:"name"`
-	Package      string       `json:"package"`
-	Dependencies []string     `json:"dependencies"`
-	Description  string       `json:"description"`
-	Options      []OptionInfo `json:"options,omitempty"`
-}
-
 // OptionInfo is defined in types.go
-
-// StatsInfo represents schema statistics
-type StatsInfo struct {
-	TotalMessages int `json:"total_messages"`
-	TotalServices int `json:"total_services"`
-	TotalEnums    int `json:"total_enums"`
-	TotalFiles    int `json:"total_files"`
-	TotalFields   int `json:"total_fields"`
-	TotalMethods  int `json:"total_methods"`
-	TotalValues   int `json:"total_values"`
-}
 
 // Handle handles the tool execution
 func (t *GetSchemaTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -168,12 +145,12 @@ func (t *GetSchemaTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*m
 	}
 
 	// Calculate count
-	count := schemaInfo.Stats.TotalMessages + schemaInfo.Stats.TotalServices + schemaInfo.Stats.TotalEnums
+	count := len(schemaInfo.Messages) + len(schemaInfo.Services) + len(schemaInfo.Enums)
 
 	response := &GetSchemaResponse{
 		Success: true,
 		Message: fmt.Sprintf("Retrieved schema information: %d messages, %d services, %d enums",
-			schemaInfo.Stats.TotalMessages, schemaInfo.Stats.TotalServices, schemaInfo.Stats.TotalEnums),
+			len(schemaInfo.Messages), len(schemaInfo.Services), len(schemaInfo.Enums)),
 		Schema: schemaInfo,
 		Count:  count,
 	}
@@ -210,26 +187,17 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 		Messages: []MessageInfo{},
 		Services: []ServiceInfo{},
 		Enums:    []EnumInfo{},
-		Files:    []FileInfo{},
-		Stats:    StatsInfo{},
 	}
 
 	// Process each file in the compiled protos
 	for _, file := range project.CompiledProtos {
-		// Always add file information
-		fileInfo := t.convertFileToInfo(file)
-		schemaInfo.Files = append(schemaInfo.Files, fileInfo)
-		schemaInfo.Stats.TotalFiles++
-
 		// Process messages
 		if t.matchesType("message", params.Type) {
 			for i := 0; i < file.Messages().Len(); i++ {
 				message := file.Messages().Get(i)
 				if t.matchesName(string(message.Name()), string(message.FullName()), params.Name) {
-					messageInfo := t.convertMessageToInfo(message, file)
+					messageInfo := t.convertMessageToInfo(message)
 					schemaInfo.Messages = append(schemaInfo.Messages, messageInfo)
-					schemaInfo.Stats.TotalMessages++
-					schemaInfo.Stats.TotalFields += len(messageInfo.Fields)
 				}
 			}
 		}
@@ -239,10 +207,8 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 			for i := 0; i < file.Services().Len(); i++ {
 				service := file.Services().Get(i)
 				if t.matchesName(string(service.Name()), string(service.FullName()), params.Name) {
-					serviceInfo := t.convertServiceToInfo(service, file)
+					serviceInfo := t.convertServiceToInfo(service)
 					schemaInfo.Services = append(schemaInfo.Services, serviceInfo)
-					schemaInfo.Stats.TotalServices++
-					schemaInfo.Stats.TotalMethods += len(serviceInfo.Methods)
 				}
 			}
 		}
@@ -252,10 +218,8 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 			for i := 0; i < file.Enums().Len(); i++ {
 				enum := file.Enums().Get(i)
 				if t.matchesName(string(enum.Name()), string(enum.FullName()), params.Name) {
-					enumInfo := t.convertEnumToInfo(enum, file)
+					enumInfo := t.convertEnumToInfo(enum)
 					schemaInfo.Enums = append(schemaInfo.Enums, enumInfo)
-					schemaInfo.Stats.TotalEnums++
-					schemaInfo.Stats.TotalValues += len(enumInfo.Values)
 				}
 			}
 		}
@@ -265,7 +229,7 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 }
 
 // convertMessageToInfo converts a protobuf message to MessageInfo
-func (t *GetSchemaTool) convertMessageToInfo(message protoreflect.MessageDescriptor, file linker.File) MessageInfo {
+func (t *GetSchemaTool) convertMessageToInfo(message protoreflect.MessageDescriptor) MessageInfo {
 	// Convert fields
 	fields := make([]FieldInfo, 0, message.Fields().Len())
 	for i := 0; i < message.Fields().Len(); i++ {
@@ -276,7 +240,7 @@ func (t *GetSchemaTool) convertMessageToInfo(message protoreflect.MessageDescrip
 			Type:        field.Kind().String(),
 			Optional:    field.HasPresence(),
 			Repeated:    field.Cardinality() == protoreflect.Repeated,
-			Description: "",             // TODO: Extract from field options
+			Description: strings.TrimSpace(message.ParentFile().SourceLocations().ByDescriptor(field).LeadingComments),
 			Options:     []OptionInfo{}, // TODO: Extract field options
 		}
 		fields = append(fields, fieldInfo)
@@ -286,15 +250,15 @@ func (t *GetSchemaTool) convertMessageToInfo(message protoreflect.MessageDescrip
 		Name:        string(message.Name()),
 		FullName:    string(message.FullName()),
 		Fields:      fields,
-		File:        string(file.Name()),
-		Package:     string(file.Package().Name()),
-		Description: "",             // TODO: Extract from message options
+		File:        string(message.ParentFile().Path()),
+		Package:     string(message.ParentFile().Package()),
+		Description: strings.TrimSpace(message.ParentFile().SourceLocations().ByDescriptor(message).LeadingComments),
 		Options:     []OptionInfo{}, // TODO: Extract message options
 	}
 }
 
 // convertServiceToInfo converts a protobuf service to ServiceInfo
-func (t *GetSchemaTool) convertServiceToInfo(service protoreflect.ServiceDescriptor, file linker.File) ServiceInfo {
+func (t *GetSchemaTool) convertServiceToInfo(service protoreflect.ServiceDescriptor) ServiceInfo {
 	// Convert methods
 	methods := make([]MethodInfo, 0, service.Methods().Len())
 	for i := 0; i < service.Methods().Len(); i++ {
@@ -305,7 +269,7 @@ func (t *GetSchemaTool) convertServiceToInfo(service protoreflect.ServiceDescrip
 			OutputType:      string(method.Output().FullName()),
 			ClientStreaming: method.IsStreamingClient(),
 			ServerStreaming: method.IsStreamingServer(),
-			Description:     "",             // TODO: Extract from method options
+			Description:     strings.TrimSpace(service.ParentFile().SourceLocations().ByDescriptor(method).LeadingComments),
 			Options:         []OptionInfo{}, // TODO: Extract method options
 		}
 		methods = append(methods, methodInfo)
@@ -315,15 +279,15 @@ func (t *GetSchemaTool) convertServiceToInfo(service protoreflect.ServiceDescrip
 		Name:        string(service.Name()),
 		FullName:    string(service.FullName()),
 		Methods:     methods,
-		File:        string(file.Name()),
-		Package:     string(file.Package().Name()),
-		Description: "",             // TODO: Extract from service options
+		File:        string(service.ParentFile().Path()),
+		Package:     string(service.ParentFile().Package()),
+		Description: strings.TrimSpace(service.ParentFile().SourceLocations().ByDescriptor(service).LeadingComments),
 		Options:     []OptionInfo{}, // TODO: Extract service options
 	}
 }
 
 // convertEnumToInfo converts a protobuf enum to EnumInfo
-func (t *GetSchemaTool) convertEnumToInfo(enum protoreflect.EnumDescriptor, file linker.File) EnumInfo {
+func (t *GetSchemaTool) convertEnumToInfo(enum protoreflect.EnumDescriptor) EnumInfo {
 	// Convert enum values
 	values := make([]EnumValueInfo, 0, enum.Values().Len())
 	for i := 0; i < enum.Values().Len(); i++ {
@@ -331,7 +295,7 @@ func (t *GetSchemaTool) convertEnumToInfo(enum protoreflect.EnumDescriptor, file
 		valueInfo := EnumValueInfo{
 			Name:        string(value.Name()),
 			Number:      int32(value.Number()),
-			Description: "",             // TODO: Extract from value options
+			Description: strings.TrimSpace(enum.ParentFile().SourceLocations().ByDescriptor(value).LeadingComments),
 			Options:     []OptionInfo{}, // TODO: Extract value options
 		}
 		values = append(values, valueInfo)
@@ -341,20 +305,9 @@ func (t *GetSchemaTool) convertEnumToInfo(enum protoreflect.EnumDescriptor, file
 		Name:        string(enum.Name()),
 		FullName:    string(enum.FullName()),
 		Values:      values,
-		File:        string(file.Name()),
-		Package:     string(file.Package().Name()),
-		Description: "",             // TODO: Extract from enum options
+		File:        string(enum.ParentFile().Path()),
+		Package:     string(enum.ParentFile().Package()),
+		Description: strings.TrimSpace(enum.ParentFile().SourceLocations().ByDescriptor(enum).LeadingComments),
 		Options:     []OptionInfo{}, // TODO: Extract enum options
-	}
-}
-
-// convertFileToInfo converts a protobuf file to FileInfo
-func (t *GetSchemaTool) convertFileToInfo(file linker.File) FileInfo {
-	return FileInfo{
-		Name:         string(file.Name()),
-		Package:      string(file.Package()),
-		Dependencies: []string{},     // TODO: Extract dependencies
-		Description:  "",             // TODO: Extract from file options
-		Options:      []OptionInfo{}, // TODO: Extract file options
 	}
 }

@@ -325,19 +325,6 @@ enum ProductStatus {
 		if len(schemaResponse.Schema.Enums) != 4 {
 			t.Errorf("Expected 4 enums, got %d", len(schemaResponse.Schema.Enums))
 		}
-
-		// Check file info
-		if len(schemaResponse.Schema.Files) == 0 {
-			t.Error("Expected file information to be included")
-		}
-
-		// Verify stats
-		if schemaResponse.Schema.Stats.TotalServices != 2 {
-			t.Errorf("Expected 2 total services, got %d", schemaResponse.Schema.Stats.TotalServices)
-		}
-		if schemaResponse.Schema.Stats.TotalEnums != 4 {
-			t.Errorf("Expected 4 total enums, got %d", schemaResponse.Schema.Stats.TotalEnums)
-		}
 	})
 
 	// Step 6: Get filtered schema
