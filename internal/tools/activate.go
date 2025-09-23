@@ -6,43 +6,33 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
 )
 
-// ActivateProjectTool implements the activate_project MCP tool
+// ActivateProjectTool implements the activate_project MCP tool using mcp-go
 type ActivateProjectTool struct {
-	project *compiler.ProtobufProject
-	server  interface {
-		SetProject(*compiler.ProtobufProject)
-	}
+	projectManager ProjectManagerInterface
 }
 
 // NewActivateProjectTool creates a new ActivateProjectTool instance
-func NewActivateProjectTool() *ActivateProjectTool {
-	return &ActivateProjectTool{}
+func NewActivateProjectTool(projectManager ProjectManagerInterface) *ActivateProjectTool {
+	return &ActivateProjectTool{
+		projectManager: projectManager,
+	}
 }
 
-// SetProject sets the current project
-func (t *ActivateProjectTool) SetProject(project *compiler.ProtobufProject) {
-	t.project = project
-}
-
-// SetServer sets the server interface
-func (t *ActivateProjectTool) SetServer(server interface {
-	SetProject(*compiler.ProtobufProject)
-}) {
-	t.server = server
-}
-
-// Name returns the tool name
-func (t *ActivateProjectTool) Name() string {
-	return "activate_project"
-}
-
-// Description returns the tool description
-func (t *ActivateProjectTool) Description() string {
-	return "Activate a protobuf project by loading configuration and compiling proto files"
+// GetTool returns the MCP tool definition
+func (t *ActivateProjectTool) GetTool() mcp.Tool {
+	return mcp.NewTool(
+		"activate_project",
+		mcp.WithDescription("Activate a protobuf project by loading configuration and compiling proto files"),
+		mcp.WithString("project_path",
+			mcp.Required(),
+			mcp.Description("Path to the protobuf project directory"),
+		),
+	)
 }
 
 // ActivateProjectParams represents the parameters for activate_project
@@ -61,93 +51,94 @@ type ActivateProjectResponse struct {
 	Enums       int    `json:"enums,omitempty"`
 }
 
-// Execute executes the activate_project tool
-func (t *ActivateProjectTool) Execute(ctx context.Context, params json.RawMessage) (interface{}, error) {
-	// Parse parameters
-	var activateParams ActivateProjectParams
-	if err := json.Unmarshal(params, &activateParams); err != nil {
-		return nil, fmt.Errorf("failed to parse parameters: %w", err)
-	}
-
-	// Validate project path
-	if activateParams.ProjectPath == "" {
-		return nil, fmt.Errorf("project_path parameter is required")
+// Handle handles the tool execution
+func (t *ActivateProjectTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Get project path from request
+	projectPath := req.GetString("project_path", "")
+	if projectPath == "" {
+		return mcp.NewToolResultError("project_path parameter is required"), nil
 	}
 
 	// Convert to absolute path
-	absPath, err := filepath.Abs(activateParams.ProjectPath)
+	absPath, err := filepath.Abs(projectPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path: %w", err)
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get absolute path: %v", err)), nil
 	}
 
 	// Check if project is initialized
 	if !config.ProjectExists(absPath) {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: "Project not initialized. Run 'go run cmd/protobuf-mcp/main.go init' first.",
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Load project configuration
 	projectConfig, err := config.LoadProjectConfig(absPath)
 	if err != nil {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to load project configuration: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Create protobuf project
 	protobufProject, err := compiler.NewProtobufProject(absPath, projectConfig)
 	if err != nil {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to create protobuf project: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Compile proto files
 	if err := protobufProject.CompileProtos(ctx); err != nil {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to compile proto files: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
-	// Set as current project in global manager
-	GetProjectManager().SetCurrentProject(protobufProject)
-
-	// Set project in tool
-	t.project = protobufProject
-
-	// Set project in server if available
-	if t.server != nil {
-		t.server.SetProject(protobufProject)
-	}
+	// Set as current project
+	t.projectManager.SetProject(protobufProject)
 
 	// Get statistics
 	services, err := protobufProject.GetServices()
 	if err != nil {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to get services: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	messages, err := protobufProject.GetMessages()
 	if err != nil {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to get messages: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	enums, err := protobufProject.GetEnums()
 	if err != nil {
-		return &ActivateProjectResponse{
+		response := &ActivateProjectResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to get enums: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Count proto files
@@ -156,7 +147,7 @@ func (t *ActivateProjectTool) Execute(ctx context.Context, params json.RawMessag
 		protoFiles = len(protobufProject.CompiledProtos.File)
 	}
 
-	return &ActivateProjectResponse{
+	response := &ActivateProjectResponse{
 		Success:     true,
 		Message:     "Project activated successfully",
 		ProjectRoot: absPath,
@@ -164,5 +155,12 @@ func (t *ActivateProjectTool) Execute(ctx context.Context, params json.RawMessag
 		Services:    len(services),
 		Messages:    len(messages),
 		Enums:       len(enums),
-	}, nil
+	}
+
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal response: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(responseJSON)), nil
 }

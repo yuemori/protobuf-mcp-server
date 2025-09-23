@@ -4,28 +4,30 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
-	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
+	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-// ListServicesTool implements the list_services MCP tool
+// ListServicesTool implements the list_services MCP tool using mcp-go
 type ListServicesTool struct {
-	project *compiler.ProtobufProject
+	projectManager ProjectManagerInterface
 }
 
-// SetProject sets the current project
-func (t *ListServicesTool) SetProject(project *compiler.ProtobufProject) {
-	t.project = project
+// NewListServicesTool creates a new ListServicesTool instance
+func NewListServicesTool(projectManager ProjectManagerInterface) *ListServicesTool {
+	return &ListServicesTool{
+		projectManager: projectManager,
+	}
 }
 
-// ListServicesParams represents the parameters for list_services tool
-type ListServicesParams struct {
-	// No parameters needed - uses currently activated project
+// GetTool returns the MCP tool definition
+func (t *ListServicesTool) GetTool() mcp.Tool {
+	return mcp.NewTool(
+		"list_services",
+		mcp.WithDescription("List all services in the currently activated protobuf project"),
+	)
 }
-
-// ServiceInfo and MethodInfo are defined in types.go
 
 // ListServicesResponse represents the response from list_services tool
 type ListServicesResponse struct {
@@ -35,63 +37,39 @@ type ListServicesResponse struct {
 	Count    int           `json:"count"`
 }
 
-// Name returns the tool name
-func (t *ListServicesTool) Name() string {
-	return "list_services"
-}
-
-// Description returns the tool description
-func (t *ListServicesTool) Description() string {
-	return "List all services in the currently activated protobuf project"
-}
-
-// Execute executes the list_services tool
-func (t *ListServicesTool) Execute(ctx context.Context, args json.RawMessage) (interface{}, error) {
-	// Parse parameters
-	var params ListServicesParams
-	if len(args) > 0 {
-		if err := json.Unmarshal(args, &params); err != nil {
-			return &ListServicesResponse{
-				Success: false,
-				Message: fmt.Sprintf("Invalid parameters: %v", err),
-			}, nil
-		}
-	}
-
-	// Get current project from tool or global manager
-	var project *compiler.ProtobufProject
-	if t.project != nil {
-		project = t.project
-	} else {
-		project = GetProjectManager().GetCurrentProject()
-	}
-
+// Handle handles the tool execution
+func (t *ListServicesTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Get current project
+	project := t.projectManager.GetProject()
 	if project == nil {
-		return &ListServicesResponse{
+		response := &ListServicesResponse{
 			Success: false,
 			Message: "No project activated. Use activate_project first.",
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Check if project is compiled
 	if project.CompiledProtos == nil {
-		return &ListServicesResponse{
+		response := &ListServicesResponse{
 			Success: false,
 			Message: "Project not compiled. Use activate_project first.",
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Get services from compiled protos
 	services, err := project.GetServices()
 	if err != nil {
-		return &ListServicesResponse{
+		response := &ListServicesResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to get services: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
-
-	// Debug: Log the number of services found
-	fmt.Fprintf(os.Stderr, "Debug: Found %d services in project\n", len(services))
 
 	// Convert to ServiceInfo
 	serviceInfos := make([]ServiceInfo, 0, len(services))
@@ -100,12 +78,19 @@ func (t *ListServicesTool) Execute(ctx context.Context, args json.RawMessage) (i
 		serviceInfos = append(serviceInfos, serviceInfo)
 	}
 
-	return &ListServicesResponse{
+	response := &ListServicesResponse{
 		Success:  true,
 		Message:  fmt.Sprintf("Found %d services", len(serviceInfos)),
 		Services: serviceInfos,
 		Count:    len(serviceInfos),
-	}, nil
+	}
+
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal response: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(responseJSON)), nil
 }
 
 // convertServiceToInfo converts a protobuf service to ServiceInfo

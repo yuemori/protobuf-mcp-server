@@ -1,275 +1,363 @@
 package mcp
 
 import (
-	"bufio"
+	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"testing"
-	"time"
+
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/yuemori/protobuf-mcp-server/internal/config"
+	"github.com/yuemori/protobuf-mcp-server/internal/tools"
 )
 
-func TestMCPServerWithGetSchemaTool(t *testing.T) {
-	// Change to project root directory
-	originalDir, err := os.Getwd()
+// TestGetSchemaTool_Integration tests the get_schema tool through MCP protocol
+func TestGetSchemaTool_Integration(t *testing.T) {
+	// Create a temporary directory with a test project
+	tempDir, err := os.MkdirTemp("", "protobuf-get-schema-test-*")
 	if err != nil {
-		t.Fatalf("Failed to get current directory: %v", err)
+		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.Chdir(originalDir)
+	defer os.RemoveAll(tempDir)
 
-	// Change to project root (go up from internal/mcp)
-	if err := os.Chdir("../.."); err != nil {
-		t.Fatalf("Failed to change to project root: %v", err)
+	// Create project config
+	projectConfig := &config.ProjectConfig{
+		RootDirectory: tempDir,
+		ProtoPaths:    []string{"."},
+		IncludePaths:  []string{"."},
+	}
+	if err := config.SaveProjectConfig(tempDir, projectConfig); err != nil {
+		t.Fatalf("Failed to save project config: %v", err)
 	}
 
-	// Build the MCP server
-	buildCmd := exec.Command("go", "build", "-o", "protobuf-mcp", "./cmd/protobuf-mcp")
-	buildOutput, err := buildCmd.CombinedOutput()
+	// Create a test proto file with various types
+	protoContent := `syntax = "proto3";
+package test;
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message User {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  UserStatus status = 4;
+}
+
+enum UserStatus {
+  UNKNOWN = 0;
+  ACTIVE = 1;
+  INACTIVE = 2;
+  SUSPENDED = 3;
+}
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  float price = 4;
+  ProductCategory category = 5;
+}
+
+enum ProductCategory {
+  UNKNOWN_CATEGORY = 0;
+  ELECTRONICS = 1;
+  CLOTHING = 2;
+  BOOKS = 3;
+}`
+	protoFile := filepath.Join(tempDir, "schema.proto")
+	if err := os.WriteFile(protoFile, []byte(protoContent), 0644); err != nil {
+		t.Fatalf("Failed to write proto file: %v", err)
+	}
+
+	// Create server and client
+	server := NewMCPServer()
+	mcpClient, err := client.NewInProcessClient(server.server)
 	if err != nil {
-		t.Fatalf("Failed to build MCP server: %v\nOutput: %s", err, string(buildOutput))
+		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer os.Remove("protobuf-mcp")
 
-	t.Run("Get Schema Integration", func(t *testing.T) {
-		// Start the MCP server
-		cmd := exec.Command("./protobuf-mcp", "server")
+	ctx := context.Background()
 
-		stdin, err := cmd.StdinPipe()
+	// Initialize
+	_, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: "1.0.0",
+			},
+			Capabilities: mcp.ClientCapabilities{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to initialize: %v", err)
+	}
+
+	// Activate project first
+	activateResult, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "activate_project",
+			Arguments: map[string]interface{}{
+				"project_path": tempDir,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to activate project: %v", err)
+	}
+
+	var activateResponse tools.ActivateProjectResponse
+	if textContent, ok := mcp.AsTextContent(activateResult.Content[0]); ok {
+		if err := json.Unmarshal([]byte(textContent.Text), &activateResponse); err != nil {
+			t.Fatalf("Failed to unmarshal activate response: %v", err)
+		}
+	}
+	if !activateResponse.Success {
+		t.Fatalf("Project activation failed: %s", activateResponse.Message)
+	}
+
+	// Test calling get_schema without any filters
+	t.Run("GetAllSchema", func(t *testing.T) {
+		result, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name:      "get_schema",
+				Arguments: map[string]interface{}{},
+			},
+		})
 		if err != nil {
-			t.Fatalf("Failed to create stdin pipe: %v", err)
-		}
-		defer stdin.Close()
-
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			t.Fatalf("Failed to create stdout pipe: %v", err)
-		}
-		defer stdout.Close()
-
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start MCP server: %v", err)
-		}
-		defer cmd.Process.Kill()
-
-		// Wait for server to start
-		time.Sleep(100 * time.Millisecond)
-
-		// Test 1: Initialize
-		initRequest := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      1,
-			Method:  "initialize",
-			Params:  json.RawMessage(`{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"clientInfo":{"name":"test-client","version":"1.0.0"}}`),
+			t.Fatalf("Failed to call get_schema: %v", err)
 		}
 
-		if err := sendRequest(stdin, initRequest); err != nil {
-			t.Fatalf("Failed to send initialize request: %v", err)
-		}
-
-		initResponse, err := readResponse(stdout)
-		if err != nil {
-			t.Fatalf("Failed to read initialize response: %v", err)
-		}
-
-		if initResponse.Error != nil {
-			t.Fatalf("Initialize failed: %v", initResponse.Error)
-		}
-
-		// Test 2: List tools
-		listRequest := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      2,
-			Method:  "tools/list",
-			Params:  json.RawMessage(`{}`),
-		}
-
-		if err := sendRequest(stdin, listRequest); err != nil {
-			t.Fatalf("Failed to send list tools request: %v", err)
-		}
-
-		listResponse, err := readResponse(stdout)
-		if err != nil {
-			t.Fatalf("Failed to read list tools response: %v", err)
-		}
-
-		if listResponse.Error != nil {
-			t.Fatalf("List tools failed: %v", listResponse.Error)
-		}
-
-		// Verify get_schema tool is present
-		result, ok := listResponse.Result.(map[string]interface{})
-		if !ok {
-			t.Fatalf("Expected result to be map, got %T", listResponse.Result)
-		}
-
-		tools, ok := result["tools"].([]interface{})
-		if !ok {
-			t.Fatalf("Expected tools to be array, got %T", result["tools"])
-		}
-
-		if len(tools) != 3 {
-			t.Errorf("Expected 3 tools, got %d", len(tools))
-		}
-
-		// Check that get_schema tool is present
-		toolNames := make(map[string]bool)
-		for _, tool := range tools {
-			if toolMap, ok := tool.(map[string]interface{}); ok {
-				if name, ok := toolMap["name"].(string); ok {
-					toolNames[name] = true
-				}
+		var response tools.GetSchemaResponse
+		if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+			if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
 		}
 
-		if !toolNames["get_schema"] {
-			t.Error("Expected get_schema tool to be present")
+		if !response.Success {
+			t.Fatalf("Get schema failed: %s", response.Message)
 		}
 
-		// Test 3: Activate project
-		activateRequest := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      3,
-			Method:  "tools/call",
-			Params:  json.RawMessage(`{"name":"activate_project","arguments":{"project_path":"test-project"}}`),
+		if response.Schema == nil {
+			t.Fatal("Expected schema to be present")
 		}
 
-		if err := sendRequest(stdin, activateRequest); err != nil {
-			t.Fatalf("Failed to send activate project request: %v", err)
+		// Check that we have all expected types
+		if len(response.Schema.Messages) < 6 {
+			t.Errorf("Expected at least 6 messages, got %d", len(response.Schema.Messages))
 		}
 
-		activateResponse, err := readResponse(stdout)
-		if err != nil {
-			t.Fatalf("Failed to read activate project response: %v", err)
+		if len(response.Schema.Services) != 1 {
+			t.Errorf("Expected 1 service, got %d", len(response.Schema.Services))
 		}
 
-		if activateResponse.Error != nil {
-			t.Fatalf("Activate project failed: %v", activateResponse.Error)
+		if len(response.Schema.Enums) != 2 {
+			t.Errorf("Expected 2 enums, got %d", len(response.Schema.Enums))
 		}
 
-		// Test 4: Get schema
-		getSchemaRequest := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      4,
-			Method:  "tools/call",
-			Params:  json.RawMessage(`{"name":"get_schema","arguments":{}}`),
+		// Check stats
+		if response.Schema.Stats.TotalMessages < 6 {
+			t.Errorf("Expected at least 6 total messages, got %d", response.Schema.Stats.TotalMessages)
 		}
-
-		if err := sendRequest(stdin, getSchemaRequest); err != nil {
-			t.Fatalf("Failed to send get schema request: %v", err)
+		if response.Schema.Stats.TotalServices != 1 {
+			t.Errorf("Expected 1 total service, got %d", response.Schema.Stats.TotalServices)
 		}
-
-		getSchemaResponse, err := readResponse(stdout)
-		if err != nil {
-			t.Fatalf("Failed to read get schema response: %v", err)
-		}
-
-		if getSchemaResponse.Error != nil {
-			t.Fatalf("Get schema failed: %v", getSchemaResponse.Error)
-		}
-
-		// Verify schema response
-		schemaResult, ok := getSchemaResponse.Result.(map[string]interface{})
-		if !ok {
-			t.Fatalf("Expected schema result to be map, got %T", getSchemaResponse.Result)
-		}
-
-		success, ok := schemaResult["success"].(bool)
-		if !ok || !success {
-			t.Errorf("Expected success=true, got %v", schemaResult["success"])
-		}
-
-		// Check that schema information is present
-		if schema, ok := schemaResult["schema"].(map[string]interface{}); ok {
-			// Check messages
-			if messages, ok := schema["messages"].([]interface{}); ok {
-				if len(messages) == 0 {
-					t.Error("Expected messages to be present in schema")
-				}
-			}
-
-			// Check services
-			if services, ok := schema["services"].([]interface{}); ok {
-				if len(services) == 0 {
-					t.Error("Expected services to be present in schema")
-				}
-			}
-
-			// Check enums
-			if enums, ok := schema["enums"].([]interface{}); ok {
-				if len(enums) == 0 {
-					t.Error("Expected enums to be present in schema")
-				}
-			}
-
-			// Check stats
-			if stats, ok := schema["stats"].(map[string]interface{}); ok {
-				if totalMessages, ok := stats["total_messages"].(float64); ok {
-					if totalMessages == 0 {
-						t.Error("Expected total_messages to be > 0")
-					}
-				}
-			}
-		} else {
-			t.Error("Expected schema information to be present")
-		}
-
-		// Test 5: Get schema with filters
-		getSchemaFilteredRequest := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      5,
-			Method:  "tools/call",
-			Params:  json.RawMessage(`{"name":"get_schema","arguments":{"message_types":["User"],"include_file_info":true}}`),
-		}
-
-		if err := sendRequest(stdin, getSchemaFilteredRequest); err != nil {
-			t.Fatalf("Failed to send get schema filtered request: %v", err)
-		}
-
-		getSchemaFilteredResponse, err := readResponse(stdout)
-		if err != nil {
-			t.Fatalf("Failed to read get schema filtered response: %v", err)
-		}
-
-		if getSchemaFilteredResponse.Error != nil {
-			t.Fatalf("Get schema filtered failed: %v", getSchemaFilteredResponse.Error)
-		}
-
-		// Verify filtered response
-		filteredResult, ok := getSchemaFilteredResponse.Result.(map[string]interface{})
-		if !ok {
-			t.Fatalf("Expected filtered result to be map, got %T", getSchemaFilteredResponse.Result)
-		}
-
-		success, ok = filteredResult["success"].(bool)
-		if !ok || !success {
-			t.Errorf("Expected success=true for filtered request, got %v", filteredResult["success"])
+		if response.Schema.Stats.TotalEnums != 2 {
+			t.Errorf("Expected 2 total enums, got %d", response.Schema.Stats.TotalEnums)
 		}
 	})
-}
 
-// Helper functions for JSON-RPC communication
-func sendRequest(stdin io.WriteCloser, request JSONRPCRequest) error {
-	requestBytes, err := json.Marshal(request)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(stdin, "%s\n", string(requestBytes))
-	return err
-}
+	// Test get_schema with message type filter
+	t.Run("FilterByMessageTypes", func(t *testing.T) {
+		result, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "get_schema",
+				Arguments: map[string]interface{}{
+					"message_types": []interface{}{"User", "Product"},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to call get_schema: %v", err)
+		}
 
-func readResponse(stdout io.ReadCloser) (*JSONRPCResponse, error) {
-	scanner := bufio.NewScanner(stdout)
-	if !scanner.Scan() {
-		return nil, fmt.Errorf("no response received")
-	}
+		var response tools.GetSchemaResponse
+		if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+			if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+		}
 
-	line := scanner.Text()
-	var response JSONRPCResponse
-	if err := json.Unmarshal([]byte(line), &response); err != nil {
-		return nil, err
-	}
+		if !response.Success {
+			t.Fatalf("Get schema failed: %s", response.Message)
+		}
 
-	return &response, nil
+		if len(response.Schema.Messages) != 2 {
+			t.Errorf("Expected 2 messages, got %d", len(response.Schema.Messages))
+		}
+
+		// Check that we got the right messages
+		messageNames := make(map[string]bool)
+		for _, msg := range response.Schema.Messages {
+			messageNames[msg.Name] = true
+		}
+
+		if !messageNames["User"] {
+			t.Error("Expected User message to be present")
+		}
+		if !messageNames["Product"] {
+			t.Error("Expected Product message to be present")
+		}
+	})
+
+	// Test get_schema with enum type filter
+	t.Run("FilterByEnumTypes", func(t *testing.T) {
+		result, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "get_schema",
+				Arguments: map[string]interface{}{
+					"enum_types": []interface{}{"UserStatus"},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to call get_schema: %v", err)
+		}
+
+		var response tools.GetSchemaResponse
+		if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+			if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+		}
+
+		if !response.Success {
+			t.Fatalf("Get schema failed: %s", response.Message)
+		}
+
+		if len(response.Schema.Enums) != 1 {
+			t.Errorf("Expected 1 enum, got %d", len(response.Schema.Enums))
+		}
+
+		if response.Schema.Enums[0].Name != "UserStatus" {
+			t.Errorf("Expected UserStatus enum, got %s", response.Schema.Enums[0].Name)
+		}
+	})
+
+	// Test get_schema with include_file_info
+	t.Run("IncludeFileInfo", func(t *testing.T) {
+		result, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "get_schema",
+				Arguments: map[string]interface{}{
+					"include_file_info": true,
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to call get_schema: %v", err)
+		}
+
+		var response tools.GetSchemaResponse
+		if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+			if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+		}
+
+		if !response.Success {
+			t.Fatalf("Get schema failed: %s", response.Message)
+		}
+
+		// Check that file info is included
+		if len(response.Schema.Files) == 0 {
+			t.Error("Expected file information to be included")
+		}
+
+		// Check that we have the schema.proto file
+		found := false
+		for _, file := range response.Schema.Files {
+			if file.Name == "schema.proto" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Expected schema.proto file to be present in file info")
+		}
+	})
+
+	// Test get_schema without project activated
+	t.Run("NoProjectActivated", func(t *testing.T) {
+		// Create a new server without project
+		newServer := NewMCPServer()
+		newClient, err := client.NewInProcessClient(newServer.server)
+		if err != nil {
+			t.Fatalf("Failed to create new client: %v", err)
+		}
+
+		// Initialize
+		_, err = newClient.Initialize(ctx, mcp.InitializeRequest{
+			Params: mcp.InitializeParams{
+				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+				ClientInfo: mcp.Implementation{
+					Name:    "test-client",
+					Version: "1.0.0",
+				},
+				Capabilities: mcp.ClientCapabilities{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to initialize: %v", err)
+		}
+
+		// Try to get schema without activating project
+		result, err := newClient.CallTool(ctx, mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name:      "get_schema",
+				Arguments: map[string]interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to call get_schema: %v", err)
+		}
+
+		var response tools.GetSchemaResponse
+		if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+			if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+		}
+
+		if response.Success {
+			t.Error("Expected success=false when no project is activated")
+		}
+
+		if response.Message != "No project activated. Use activate_project first." {
+			t.Errorf("Unexpected error message: %s", response.Message)
+		}
+	})
 }

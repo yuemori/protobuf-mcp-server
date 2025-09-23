@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
 )
 
-func TestActivateProjectTool_Execute(t *testing.T) {
+func TestActivateProjectTool_Handle(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "protobuf-mcp-test-*")
 	if err != nil {
@@ -18,149 +20,173 @@ func TestActivateProjectTool_Execute(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create test proto files
-	testProtoDir := filepath.Join(tempDir, "proto")
-	if err := os.MkdirAll(testProtoDir, 0755); err != nil {
-		t.Fatalf("Failed to create proto dir: %v", err)
+	// Initialize the project
+	projectConfig := &config.ProjectConfig{
+		RootDirectory: tempDir,
+		ProtoPaths:    []string{"."},
+		IncludePaths:  []string{"."},
+	}
+	// Save the config using the proper YAML format
+	if err := config.SaveProjectConfig(tempDir, projectConfig); err != nil {
+		t.Fatalf("Failed to save config: %v", err)
 	}
 
-	// Write a simple test proto file
-	testProtoContent := `syntax = "proto3";
+	// Verify project exists
+	if !config.ProjectExists(tempDir) {
+		t.Fatalf("Project should exist after saving config")
+	}
 
-package test.v1;
+	// Create a test proto file
+	protoContent := `syntax = "proto3";
 
-option go_package = "github.com/test/v1";
+package test;
 
-// Test service
-service TestService {
-  // Test method
-  rpc TestMethod(TestRequest) returns (TestResponse);
-}
-
-// Test request message
-message TestRequest {
+message TestMessage {
   string name = 1;
+  int32 value = 2;
 }
 
-// Test response message
-message TestResponse {
-  string message = 1;
-}
-`
-
-	testProtoFile := filepath.Join(testProtoDir, "test.proto")
-	if err := os.WriteFile(testProtoFile, []byte(testProtoContent), 0644); err != nil {
-		t.Fatalf("Failed to write test proto file: %v", err)
+service TestService {
+  rpc GetTest(TestMessage) returns (TestMessage);
+}`
+	protoPath := filepath.Join(tempDir, "test.proto")
+	if err := os.WriteFile(protoPath, []byte(protoContent), 0644); err != nil {
+		t.Fatalf("Failed to write proto file: %v", err)
 	}
 
-	tool := NewActivateProjectTool()
+	// Create tool with mock project manager
+	mockProjectManager := &MockProjectManager{}
+	tool := NewActivateProjectTool(mockProjectManager)
 
-	tests := []struct {
-		name          string
-		params        ActivateProjectParams
-		expectSuccess bool
-		expectError   bool
-		setupProject  bool
-	}{
-		{
-			name: "successful activation",
-			params: ActivateProjectParams{
-				ProjectPath: tempDir,
+	// Test successful activation
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "activate_project",
+			Arguments: map[string]interface{}{
+				"project_path": tempDir,
 			},
-			expectSuccess: true,
-			expectError:   false,
-			setupProject:  true,
-		},
-		{
-			name: "project not initialized",
-			params: ActivateProjectParams{
-				ProjectPath: "/non/existent/project",
-			},
-			expectSuccess: false,
-			expectError:   false,
-			setupProject:  false,
-		},
-		{
-			name: "empty project path",
-			params: ActivateProjectParams{
-				ProjectPath: "",
-			},
-			expectSuccess: false,
-			expectError:   true,
-			setupProject:  false,
-		},
-		{
-			name: "non-existent project path",
-			params: ActivateProjectParams{
-				ProjectPath: "/non/existent/path",
-			},
-			expectSuccess: false,
-			expectError:   false,
-			setupProject:  false,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup project if needed
-			if tt.setupProject {
-				// Initialize project configuration
-				projectConfig := config.DefaultProjectConfig()
-				projectConfig.ProtoPaths = []string{"proto"}
-				if err := config.SaveProjectConfig(tempDir, projectConfig); err != nil {
-					t.Fatalf("Failed to setup project: %v", err)
-				}
-			}
+	ctx := context.Background()
+	result, err := tool.Handle(ctx, req)
+	if err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
 
-			// Marshal parameters
-			paramsJSON, err := json.Marshal(tt.params)
-			if err != nil {
-				t.Fatalf("Failed to marshal params: %v", err)
-			}
+	if result.IsError {
+		if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+			t.Fatalf("Expected success, got error: %s", textContent.Text)
+		} else {
+			t.Fatalf("Expected success, got error")
+		}
+	}
 
-			// Execute tool
-			result, err := tool.Execute(context.Background(), paramsJSON)
+	// Parse response
+	var response ActivateProjectResponse
+	if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+		if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+	} else {
+		t.Fatalf("Expected text content")
+	}
 
-			// Check error expectation
-			if tt.expectError && err == nil {
-				t.Errorf("Expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
+	if !response.Success {
+		t.Fatalf("Expected success=true, got success=false: %s", response.Message)
+	}
 
-			// Check result
-			if !tt.expectError {
-				response, ok := result.(*ActivateProjectResponse)
-				if !ok {
-					t.Fatalf("Expected ActivateProjectResponse, got %T", result)
-				}
+	if response.ProjectRoot != tempDir {
+		t.Fatalf("Expected ProjectRoot=%s, got %s", tempDir, response.ProjectRoot)
+	}
 
-				if response.Success != tt.expectSuccess {
-					t.Errorf("Expected success=%v, got %v", tt.expectSuccess, response.Success)
-				}
+	if response.ProtoFiles != 1 {
+		t.Fatalf("Expected ProtoFiles=1, got %d", response.ProtoFiles)
+	}
 
-				// For successful activation, check that we have some proto files
-				if tt.expectSuccess && response.ProtoFiles == 0 {
-					t.Errorf("Expected proto files to be found, got 0")
-				}
-			}
-		})
+	if response.Services != 1 {
+		t.Fatalf("Expected Services=1, got %d", response.Services)
+	}
+
+	if response.Messages != 1 {
+		t.Fatalf("Expected Messages=1, got %d", response.Messages)
 	}
 }
 
-func TestActivateProjectTool_Name(t *testing.T) {
-	tool := NewActivateProjectTool()
-	expected := "activate_project"
-	if tool.Name() != expected {
-		t.Errorf("Expected name %s, got %s", expected, tool.Name())
+func TestActivateProjectTool_Handle_InvalidPath(t *testing.T) {
+	// Create tool with mock project manager
+	mockProjectManager := &MockProjectManager{}
+	tool := NewActivateProjectTool(mockProjectManager)
+
+	// Test with invalid path
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "activate_project",
+			Arguments: map[string]interface{}{
+				"project_path": "/nonexistent/path",
+			},
+		},
+	}
+
+	ctx := context.Background()
+	result, err := tool.Handle(ctx, req)
+	if err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+
+	// The result is not an error type, but contains a failure response
+	if result.IsError {
+		t.Fatalf("Expected regular response, got error type")
+	}
+
+	// Parse response to check if it's a failure
+	var response ActivateProjectResponse
+	if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+		if err := json.Unmarshal([]byte(textContent.Text), &response); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+	} else {
+		t.Fatalf("Expected text content in response")
+	}
+
+	if response.Success {
+		t.Fatalf("Expected success=false for invalid path, got success=true")
+	}
+
+	if !strings.Contains(response.Message, "Project not initialized") {
+		t.Fatalf("Expected error message about project not initialized, got: %s", response.Message)
 	}
 }
 
-func TestActivateProjectTool_Description(t *testing.T) {
-	tool := NewActivateProjectTool()
-	description := tool.Description()
-	if description == "" {
-		t.Error("Expected non-empty description")
+func TestActivateProjectTool_Handle_MissingPath(t *testing.T) {
+	// Create tool with mock project manager
+	mockProjectManager := &MockProjectManager{}
+	tool := NewActivateProjectTool(mockProjectManager)
+
+	// Test with missing path
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "activate_project",
+			Arguments: map[string]interface{}{},
+		},
+	}
+
+	ctx := context.Background()
+	result, err := tool.Handle(ctx, req)
+	if err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+
+	if !result.IsError {
+		t.Fatalf("Expected error, got success")
+	}
+
+	// Check error message
+	if textContent, ok := mcp.AsTextContent(result.Content[0]); ok {
+		if !strings.Contains(textContent.Text, "project_path parameter is required") {
+			t.Fatalf("Expected error message about missing project_path, got: %s", textContent.Text)
+		}
+	} else {
+		t.Fatalf("Expected text content in error response")
 	}
 }

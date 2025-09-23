@@ -5,18 +5,45 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-// GetSchemaTool implements the get_schema MCP tool
+// GetSchemaTool implements the get_schema MCP tool using mcp-go
 type GetSchemaTool struct {
-	project *compiler.ProtobufProject
+	projectManager ProjectManagerInterface
 }
 
-// SetProject sets the current project
-func (t *GetSchemaTool) SetProject(project *compiler.ProtobufProject) {
-	t.project = project
+// NewGetSchemaTool creates a new GetSchemaTool instance
+func NewGetSchemaTool(projectManager ProjectManagerInterface) *GetSchemaTool {
+	return &GetSchemaTool{
+		projectManager: projectManager,
+	}
+}
+
+// GetTool returns the MCP tool definition
+func (t *GetSchemaTool) GetTool() mcp.Tool {
+	return mcp.NewTool(
+		"get_schema",
+		mcp.WithDescription("Get detailed schema information from the activated protobuf project"),
+		mcp.WithArray("message_types",
+			mcp.Description("Filter by specific message types"),
+			mcp.Items(map[string]any{"type": "string"}),
+		),
+		mcp.WithArray("service_types",
+			mcp.Description("Filter by specific service types"),
+			mcp.Items(map[string]any{"type": "string"}),
+		),
+		mcp.WithArray("enum_types",
+			mcp.Description("Filter by specific enum types"),
+			mcp.Items(map[string]any{"type": "string"}),
+		),
+		mcp.WithBoolean("include_file_info",
+			mcp.DefaultBool(false),
+			mcp.Description("Include file information in the response"),
+		),
+	)
 }
 
 // GetSchemaParams represents the parameters for get_schema tool
@@ -111,71 +138,84 @@ type StatsInfo struct {
 	TotalValues   int `json:"total_values"`
 }
 
-// Name returns the tool name
-func (t *GetSchemaTool) Name() string {
-	return "get_schema"
-}
-
-// Description returns the tool description
-func (t *GetSchemaTool) Description() string {
-	return "Get detailed schema information from the activated protobuf project"
-}
-
-// Execute gets detailed schema information from the activated protobuf project
-func (t *GetSchemaTool) Execute(ctx context.Context, params json.RawMessage) (interface{}, error) {
+// Handle handles the tool execution
+func (t *GetSchemaTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Parse parameters
-	var getSchemaParams GetSchemaParams
-	if len(params) > 0 {
-		if err := json.Unmarshal(params, &getSchemaParams); err != nil {
-			return &GetSchemaResponse{
-				Success: false,
-				Message: fmt.Sprintf("Invalid parameters: %v", err),
-			}, nil
-		}
-	}
+	var params GetSchemaParams
+	params.MessageTypes = t.getStringArray(req, "message_types")
+	params.ServiceTypes = t.getStringArray(req, "service_types")
+	params.EnumTypes = t.getStringArray(req, "enum_types")
+	params.IncludeFileInfo = req.GetBool("include_file_info", false)
 
-	// Get current project from tool or global manager
-	var project *compiler.ProtobufProject
-	if t.project != nil {
-		project = t.project
-	} else {
-		project = GetProjectManager().GetCurrentProject()
-	}
-
+	// Get current project
+	project := t.projectManager.GetProject()
 	if project == nil {
-		return &GetSchemaResponse{
+		response := &GetSchemaResponse{
 			Success: false,
 			Message: "No project activated. Use activate_project first.",
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Check if project is compiled
 	if project.CompiledProtos == nil {
-		return &GetSchemaResponse{
+		response := &GetSchemaResponse{
 			Success: false,
 			Message: "Project not compiled. Use activate_project first.",
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Get schema information
-	schemaInfo, err := t.buildSchemaInfo(project, &getSchemaParams)
+	schemaInfo, err := t.buildSchemaInfo(project, &params)
 	if err != nil {
-		return &GetSchemaResponse{
+		response := &GetSchemaResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to build schema info: %v", err),
-		}, nil
+		}
+		responseJSON, _ := json.Marshal(response)
+		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Calculate count
 	count := schemaInfo.Stats.TotalMessages + schemaInfo.Stats.TotalServices + schemaInfo.Stats.TotalEnums
 
-	return &GetSchemaResponse{
+	response := &GetSchemaResponse{
 		Success: true,
 		Message: fmt.Sprintf("Retrieved schema information: %d messages, %d services, %d enums",
 			schemaInfo.Stats.TotalMessages, schemaInfo.Stats.TotalServices, schemaInfo.Stats.TotalEnums),
 		Schema: schemaInfo,
 		Count:  count,
-	}, nil
+	}
+
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal response: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(responseJSON)), nil
+}
+
+// getStringArray extracts a string array from the request
+func (t *GetSchemaTool) getStringArray(req mcp.CallToolRequest, key string) []string {
+	args := req.GetArguments()
+	if args == nil {
+		return []string{}
+	}
+
+	if arr, ok := args[key].([]interface{}); ok {
+		result := make([]string, 0, len(arr))
+		for _, item := range arr {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			}
+		}
+		return result
+	}
+
+	return []string{}
 }
 
 // buildSchemaInfo builds detailed schema information from the compiled project
