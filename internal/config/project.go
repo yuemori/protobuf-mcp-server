@@ -11,7 +11,8 @@ import (
 
 // ProjectConfig represents the configuration for a protobuf project
 type ProjectConfig struct {
-	ProtoFiles []string `yaml:"proto_files"`
+	ProtoFiles  []string `yaml:"proto_files"`
+	ImportPaths []string `yaml:"import_paths"`
 }
 
 // DefaultProjectConfig returns a default configuration for a new project
@@ -19,6 +20,9 @@ func DefaultProjectConfig() *ProjectConfig {
 	return &ProjectConfig{
 		ProtoFiles: []string{
 			"proto/**/*.proto",
+		},
+		ImportPaths: []string{
+			".",
 		},
 	}
 }
@@ -38,6 +42,11 @@ func LoadProjectConfig(projectRoot string) (*ProjectConfig, error) {
 	var config ProjectConfig
 	if err := yaml.Unmarshal([]byte(processedData), &config); err != nil {
 		return nil, fmt.Errorf("failed to parse project config: %w", err)
+	}
+
+	// Set default import paths if not specified
+	if len(config.ImportPaths) == 0 {
+		config.ImportPaths = []string{"."}
 	}
 
 	return &config, nil

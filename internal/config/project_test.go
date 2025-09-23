@@ -211,44 +211,65 @@ func TestResolveProtoFilesWithAbsolutePath(t *testing.T) {
 
 func TestYAMLParsing(t *testing.T) {
 	tests := []struct {
-		name     string
-		yaml     string
-		expected []string
+		name          string
+		yaml          string
+		expectedFiles []string
+		expectedPaths []string
 	}{
 		{
-			name: "quoted glob patterns",
+			name: "quoted glob patterns with import paths",
 			yaml: `proto_files:
   - "**/*.proto"
-  - "proto/**/*.proto"`,
-			expected: []string{"**/*.proto", "proto/**/*.proto"},
+  - "proto/**/*.proto"
+import_paths:
+  - "."
+  - "proto"`,
+			expectedFiles: []string{"**/*.proto", "proto/**/*.proto"},
+			expectedPaths: []string{".", "proto"},
 		},
 		{
-			name: "unquoted glob patterns",
+			name: "unquoted glob patterns with import paths",
 			yaml: `proto_files:
   - **/*.proto
-  - proto/**/*.proto`,
-			expected: []string{"**/*.proto", "proto/**/*.proto"},
+  - proto/**/*.proto
+import_paths:
+  - .
+  - proto`,
+			expectedFiles: []string{"**/*.proto", "proto/**/*.proto"},
+			expectedPaths: []string{".", "proto"},
 		},
 		{
 			name: "mixed quoted and unquoted patterns",
 			yaml: `proto_files:
   - **/*.proto
   - "api/**/*.proto"
-  - proto/**/*.proto`,
-			expected: []string{"**/*.proto", "api/**/*.proto", "proto/**/*.proto"},
+  - proto/**/*.proto
+import_paths:
+  - "."
+  - api`,
+			expectedFiles: []string{"**/*.proto", "api/**/*.proto", "proto/**/*.proto"},
+			expectedPaths: []string{".", "api"},
 		},
 		{
 			name: "simple patterns without glob",
 			yaml: `proto_files:
   - api.proto
-  - types.proto`,
-			expected: []string{"api.proto", "types.proto"},
+  - types.proto
+import_paths:
+  - .`,
+			expectedFiles: []string{"api.proto", "types.proto"},
+			expectedPaths: []string{"."},
 		},
 		{
-			name: "single pattern",
+			name: "single pattern with multiple import paths",
 			yaml: `proto_files:
-  - **/*.proto`,
-			expected: []string{"**/*.proto"},
+  - **/*.proto
+import_paths:
+  - .
+  - proto
+  - api`,
+			expectedFiles: []string{"**/*.proto"},
+			expectedPaths: []string{".", "proto", "api"},
 		},
 	}
 
@@ -273,14 +294,26 @@ func TestYAMLParsing(t *testing.T) {
 			}
 
 			// Check the parsed proto files
-			if len(config.ProtoFiles) != len(tt.expected) {
-				t.Errorf("Expected %d proto files, got %d", len(tt.expected), len(config.ProtoFiles))
+			if len(config.ProtoFiles) != len(tt.expectedFiles) {
+				t.Errorf("Expected %d proto files, got %d", len(tt.expectedFiles), len(config.ProtoFiles))
 				return
 			}
 
-			for i, expected := range tt.expected {
+			for i, expected := range tt.expectedFiles {
 				if i >= len(config.ProtoFiles) || config.ProtoFiles[i] != expected {
 					t.Errorf("Expected ProtoFiles[%d] to be %s, got %s", i, expected, config.ProtoFiles[i])
+				}
+			}
+
+			// Check the parsed import paths
+			if len(config.ImportPaths) != len(tt.expectedPaths) {
+				t.Errorf("Expected %d import paths, got %d", len(tt.expectedPaths), len(config.ImportPaths))
+				return
+			}
+
+			for i, expected := range tt.expectedPaths {
+				if i >= len(config.ImportPaths) || config.ImportPaths[i] != expected {
+					t.Errorf("Expected ImportPaths[%d] to be %s, got %s", i, expected, config.ImportPaths[i])
 				}
 			}
 		})
@@ -339,6 +372,34 @@ func TestPreprocessYAML(t *testing.T) {
 			expected: `proto_files:
   - "*.proto"
   - "api/*.proto"`,
+		},
+		{
+			name: "unquoted import paths",
+			input: `proto_files:
+  - **/*.proto
+import_paths:
+  - .
+  - proto`,
+			expected: `proto_files:
+  - "**/*.proto"
+import_paths:
+  - .
+  - proto`,
+		},
+		{
+			name: "mixed quoted and unquoted import paths",
+			input: `proto_files:
+  - **/*.proto
+import_paths:
+  - .
+  - "proto"
+  - api`,
+			expected: `proto_files:
+  - "**/*.proto"
+import_paths:
+  - .
+  - "proto"
+  - api`,
 		},
 	}
 

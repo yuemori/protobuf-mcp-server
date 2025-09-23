@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package my_service.api.v1;
+
+option go_package = "github.com/yuemori/protobuf-mcp-server/nested/my-service/api/v1";
+
+// FooService provides foo-related operations
+service FooService {
+  // GetFoo retrieves a foo by ID
+  rpc GetFoo(GetFooRequest) returns (GetFooResponse);
+  
+  // CreateFoo creates a new foo
+  rpc CreateFoo(CreateFooRequest) returns (CreateFooResponse);
+}
+
+// GetFooRequest is the request message for GetFoo
+message GetFooRequest {
+  string foo_id = 1;
+}
+
+// GetFooResponse is the response message for GetFoo
+message GetFooResponse {
+  Foo foo = 1;
+}
+
+// CreateFooRequest is the request message for CreateFoo
+message CreateFooRequest {
+  string name = 1;
+  string description = 2;
+}
+
+// CreateFooResponse is the response message for CreateFoo
+message CreateFooResponse {
+  Foo foo = 1;
+}
+
+// Foo represents a foo entity
+message Foo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+  FooStatus status = 6;
+}
+
+// FooStatus represents the status of a foo
+enum FooStatus {
+  FOO_STATUS_UNSPECIFIED = 0;
+  FOO_STATUS_ACTIVE = 1;
+  FOO_STATUS_INACTIVE = 2;
+  FOO_STATUS_DELETED = 3;
+}

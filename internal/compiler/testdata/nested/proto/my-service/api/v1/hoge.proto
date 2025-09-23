@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package my_service.api.v1;
+
+option go_package = "github.com/yuemori/protobuf-mcp-server/nested/my-service/api/v1";
+
+import "my-service/api/v1/foo.proto";
+
+// HogeService provides hoge-related operations
+service HogeService {
+  // GetHoge retrieves a hoge by ID
+  rpc GetHoge(GetHogeRequest) returns (GetHogeResponse);
+  
+  // ListHoges retrieves a list of hoges
+  rpc ListHoges(ListHogesRequest) returns (ListHogesResponse);
+}
+
+// GetHogeRequest is the request message for GetHoge
+message GetHogeRequest {
+  string hoge_id = 1;
+}
+
+// GetHogeResponse is the response message for GetHoge
+message GetHogeResponse {
+  Hoge hoge = 1;
+}
+
+// ListHogesRequest is the request message for ListHoges
+message ListHogesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+// ListHogesResponse is the response message for ListHoges
+message ListHogesResponse {
+  repeated Hoge hoges = 1;
+  string next_page_token = 2;
+}
+
+// Hoge represents a hoge entity
+message Hoge {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+  Foo foo = 6; // Reference to Foo from the same service
+}

@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -40,9 +41,20 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 		relativeProtoFiles = append(relativeProtoFiles, relPath)
 	}
 
-	// Create source resolver with project root as import path
+	// Create source resolver with configured import paths
+	var importPaths []string
+	for _, importPath := range cfg.ImportPaths {
+		if filepath.IsAbs(importPath) {
+			// Absolute path - use as is
+			importPaths = append(importPaths, importPath)
+		} else {
+			// Relative path - resolve from project root
+			importPaths = append(importPaths, filepath.Join(projectRoot, importPath))
+		}
+	}
+
 	resolver := &protocompile.SourceResolver{
-		ImportPaths: []string{projectRoot},
+		ImportPaths: importPaths,
 	}
 
 	// Wrap with standard imports for well-known types
@@ -57,27 +69,103 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 	}, nil
 }
 
-// CompileProtos compiles all proto files in the project
-func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
-	if len(p.protoFiles) == 0 {
-		return fmt.Errorf("no proto files found in configured paths")
+// CompileProtos compiles proto files with the given configuration
+func CompileProtos(ctx context.Context, protoFiles []string, importPaths []string) (*descriptorpb.FileDescriptorSet, error) {
+	if len(protoFiles) == 0 {
+		return nil, fmt.Errorf("no proto files found in configured paths")
+	}
+
+	// Create source resolver with import paths
+	var resolvedImportPaths []string
+	for _, importPath := range importPaths {
+		if filepath.IsAbs(importPath) {
+			// Absolute path - use as is
+			resolvedImportPaths = append(resolvedImportPaths, importPath)
+		} else {
+			// Relative path - resolve from current working directory
+			wd, err := os.Getwd()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get working directory: %w", err)
+			}
+			// Check if the path exists relative to current directory
+			fullPath := filepath.Join(wd, importPath)
+			if _, err := os.Stat(fullPath); err == nil {
+				resolvedImportPaths = append(resolvedImportPaths, fullPath)
+			} else {
+				// If not found, try relative to project root (go up to find testdata)
+				projectRoot := wd
+				for {
+					testPath := filepath.Join(projectRoot, importPath)
+					if _, err := os.Stat(testPath); err == nil {
+						resolvedImportPaths = append(resolvedImportPaths, testPath)
+						break
+					}
+					parent := filepath.Dir(projectRoot)
+					if parent == projectRoot {
+						// Reached root, use original path
+						resolvedImportPaths = append(resolvedImportPaths, fullPath)
+						break
+					}
+					projectRoot = parent
+				}
+			}
+		}
+	}
+
+	resolver := &protocompile.SourceResolver{
+		ImportPaths: resolvedImportPaths,
+	}
+
+	// Wrap with standard imports for well-known types
+	resolverWithStdImports := protocompile.WithStandardImports(resolver)
+
+	// Convert proto files to relative paths based on import paths
+	var relativeProtoFiles []string
+	for _, protoFile := range protoFiles {
+		if filepath.IsAbs(protoFile) {
+			// Find which import path this file belongs to
+			found := false
+			for _, importPath := range resolvedImportPaths {
+				if relPath, err := filepath.Rel(importPath, protoFile); err == nil && !strings.HasPrefix(relPath, "..") {
+					relativeProtoFiles = append(relativeProtoFiles, relPath)
+					found = true
+					break
+				}
+			}
+			if !found {
+				// If not found in any import path, use the filename only
+				relativeProtoFiles = append(relativeProtoFiles, filepath.Base(protoFile))
+			}
+		} else {
+			// Already relative, use as is
+			relativeProtoFiles = append(relativeProtoFiles, protoFile)
+		}
+	}
+
+	// Change working directory to the first import path for protocompile
+	if len(resolvedImportPaths) > 0 {
+		originalWd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current working directory: %w", err)
+		}
+		defer os.Chdir(originalWd)
+
+		if err := os.Chdir(resolvedImportPaths[0]); err != nil {
+			return nil, fmt.Errorf("failed to change to import path directory: %w", err)
+		}
 	}
 
 	// Create compiler with our resolver
 	compiler := protocompile.Compiler{
-		Resolver:       p.resolver,
+		Resolver:       resolverWithStdImports,
 		MaxParallelism: 4,
 		SourceInfoMode: protocompile.SourceInfoStandard,
 	}
 
-	// Compile all proto files with dependency resolution
-	// Sort files to ensure dependencies are compiled first
-	sortedFiles := p.sortProtoFilesByDependencies(p.protoFiles)
-
 	// Compile all files together - protocompile will resolve dependencies automatically
-	files, err := compiler.Compile(ctx, sortedFiles...)
+	files, err := compiler.Compile(ctx, relativeProtoFiles...)
 	if err != nil {
-		return fmt.Errorf("failed to compile proto files: %w", err)
+		return nil, fmt.Errorf("failed to compile proto files: %w", err)
 	}
 
 	// Convert compiled files to FileDescriptorSet
@@ -88,10 +176,32 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 		filesList[i] = protodesc.ToFileDescriptorProto(file)
 	}
 
-	p.CompiledProtos = &descriptorpb.FileDescriptorSet{
+	return &descriptorpb.FileDescriptorSet{
 		File: filesList,
+	}, nil
+}
+
+// CompileProtos compiles all proto files in the project
+func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
+	// Get import paths from config
+	var importPaths []string
+	for _, importPath := range p.Config.ImportPaths {
+		if filepath.IsAbs(importPath) {
+			// Absolute path - use as is
+			importPaths = append(importPaths, importPath)
+		} else {
+			// Relative path - resolve from project root
+			importPaths = append(importPaths, filepath.Join(p.ProjectRoot, importPath))
+		}
 	}
 
+	// Use the standalone compile function with proto files (already relative)
+	compiledProtos, err := CompileProtos(ctx, p.protoFiles, importPaths)
+	if err != nil {
+		return err
+	}
+
+	p.CompiledProtos = compiledProtos
 	return nil
 }
 
@@ -104,9 +214,7 @@ func (p *ProtobufProject) GetServices() ([]*descriptorpb.ServiceDescriptorProto,
 	var services []*descriptorpb.ServiceDescriptorProto
 
 	for _, file := range p.CompiledProtos.File {
-		for _, service := range file.Service {
-			services = append(services, service)
-		}
+		services = append(services, file.Service...)
 	}
 
 	return services, nil
@@ -140,23 +248,4 @@ func (p *ProtobufProject) GetEnums() ([]*descriptorpb.EnumDescriptorProto, error
 	}
 
 	return enums, nil
-}
-
-// sortProtoFilesByDependencies sorts proto files by their dependencies
-// Google API files should be compiled before files that depend on them
-func (p *ProtobufProject) sortProtoFilesByDependencies(protoFiles []string) []string {
-	// Simple dependency sorting: Google API files first, then others
-	var googleFiles []string
-	var otherFiles []string
-
-	for _, file := range protoFiles {
-		if strings.HasPrefix(file, "google/") {
-			googleFiles = append(googleFiles, file)
-		} else {
-			otherFiles = append(otherFiles, file)
-		}
-	}
-
-	// Return Google API files first, then others
-	return append(googleFiles, otherFiles...)
 }
