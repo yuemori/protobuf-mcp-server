@@ -30,6 +30,6 @@ temp/
 # Dependencies
 vendor/
 
-# Claude and Serena configs (optional - remove if you want to track them)
+# Claude and Serena configs
 .claude/
 .serena/
