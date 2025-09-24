@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package example.simple.v1;
+
+option go_package = "github.com/yuemori/protobuf-mcp-server/testdata/simple/v1";
+
+// User information
+message User {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  UserRole role = 4;
+  int64 created_at = 5;  // Unix timestamp instead of google.protobuf.Timestamp
+  int64 updated_at = 6;  // Unix timestamp instead of google.protobuf.Timestamp
+  UserPreferences preferences = 7;
+  UserStatus status = 8;
+  
+  // Nested address information
+  Address address = 10;
+  repeated string tags = 11;
+  map<string, string> metadata = 12;
+}
+
+// User preferences
+message UserPreferences {
+  string language = 1;
+  string timezone = 2;
+  bool email_notifications = 3;
+  bool push_notifications = 4;
+  Theme theme = 5;
+}
+
+// Address information (nested message)
+message Address {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string postal_code = 4;
+  string country = 5;
+  
+  // Coordinates for location
+  Coordinates coordinates = 6;
+}
+
+// Geographic coordinates
+message Coordinates {
+  double latitude = 1;
+  double longitude = 2;
+  double altitude = 3; // Optional altitude in meters
+}
+
+// User role enumeration
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_GUEST = 1;
+  USER_ROLE_USER = 2;
+  USER_ROLE_MODERATOR = 3;
+  USER_ROLE_ADMIN = 4;
+  USER_ROLE_SUPER_ADMIN = 5;
+}
+
+// User status enumeration
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_INACTIVE = 2;
+  USER_STATUS_SUSPENDED = 3;
+  USER_STATUS_BANNED = 4;
+}
+
+// Theme enumeration
+enum Theme {
+  THEME_UNSPECIFIED = 0;
+  THEME_LIGHT = 1;
+  THEME_DARK = 2;
+  THEME_AUTO = 3;
+}
+
+// Event type for streaming
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_MESSAGE = 1;
+  EVENT_TYPE_JOIN = 2;
+  EVENT_TYPE_LEAVE = 3;
+  EVENT_TYPE_SYSTEM = 4;
+}
+
+// Status enumeration
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_SUCCESS = 1;
+  STATUS_ERROR = 2;
+  STATUS_PENDING = 3;
+  STATUS_CANCELLED = 4;
+}

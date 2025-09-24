@@ -1,0 +1,20 @@
+description: "Protobuf MCP Server Onboarding"
+prompt: |
+  Welcome to the Protobuf MCP Server! I've created a configuration file for your project.
+
+  Project directory: {{.ProjectRoot}}
+  Configuration file: .protobuf-mcp.yml
+
+  Next steps:
+  1. Review the generated .protobuf-mcp.yml file and its help comments
+  2. Explore your project's proto files to understand the structure
+  3. Update the configuration file with appropriate protoFiles and importPaths
+  4. Test the configuration by using list_services or get_schema tools
+
+  The configuration file includes detailed comments to guide you through the setup process.
+  You can modify the protoFiles and importPaths arrays based on your project structure.
+
+  Once configured, you can use the following tools:
+  - list_services: List all protobuf services
+  - get_schema: Get detailed schema information
+  - activate_project: Switch to a different project directory

@@ -50,11 +50,13 @@ func NewMCPServer() *MCPServer {
 	activateTool := tools.NewActivateProjectTool(projectManager)
 	listServicesTool := tools.NewListServicesTool(projectManager)
 	getSchemaTool := tools.NewGetSchemaTool(projectManager)
+	onboarding := tools.NewOnboardingTool(projectManager)
 
 	// Register tools with the server
 	s.AddTool(activateTool.GetTool(), activateTool.Handle)
 	s.AddTool(listServicesTool.GetTool(), listServicesTool.Handle)
 	s.AddTool(getSchemaTool.GetTool(), getSchemaTool.Handle)
+	s.AddTool(onboarding.GetTool(), onboarding.Handle)
 
 	return &MCPServer{
 		server: s,

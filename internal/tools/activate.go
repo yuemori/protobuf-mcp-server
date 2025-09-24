@@ -9,6 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
 	"github.com/yuemori/protobuf-mcp-server/internal/config"
+	"github.com/yuemori/protobuf-mcp-server/internal/templates"
 )
 
 // ActivateProjectTool implements the activate_project MCP tool using mcp-go
@@ -45,10 +46,6 @@ type ActivateProjectResponse struct {
 	Success     bool   `json:"success"`
 	Message     string `json:"message"`
 	ProjectRoot string `json:"project_root,omitempty"`
-	ProtoFiles  int    `json:"proto_files,omitempty"`
-	Services    int    `json:"services,omitempty"`
-	Messages    int    `json:"messages,omitempty"`
-	Enums       int    `json:"enums,omitempty"`
 }
 
 // Handle handles the tool execution
@@ -67,9 +64,20 @@ func (t *ActivateProjectTool) Handle(ctx context.Context, req mcp.CallToolReques
 
 	// Check if project is initialized
 	if !config.ProjectExists(absPath) {
+		// Return onboarding prompt when config file doesn't exist
+		onboardingPrompt, err := templates.GetOnboardingPrompt(absPath)
+		if err != nil {
+			response := &ActivateProjectResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to generate onboarding prompt: %v", err),
+			}
+			responseJSON, _ := json.Marshal(response)
+			return mcp.NewToolResultText(string(responseJSON)), nil
+		}
+
 		response := &ActivateProjectResponse{
 			Success: false,
-			Message: "Project not initialized. Run 'go run cmd/protobuf-mcp/main.go init' first.",
+			Message: onboardingPrompt,
 		}
 		responseJSON, _ := json.Marshal(response)
 		return mcp.NewToolResultText(string(responseJSON)), nil
@@ -97,64 +105,12 @@ func (t *ActivateProjectTool) Handle(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
-	// Compile proto files
-	if err := protobufProject.CompileProtos(ctx); err != nil {
-		response := &ActivateProjectResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to compile proto files: %v", err),
-		}
-		responseJSON, _ := json.Marshal(response)
-		return mcp.NewToolResultText(string(responseJSON)), nil
-	}
-
 	// Set as current project
 	t.projectManager.SetProject(protobufProject)
-
-	// Get statistics
-	services, err := protobufProject.GetServices()
-	if err != nil {
-		response := &ActivateProjectResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to get services: %v", err),
-		}
-		responseJSON, _ := json.Marshal(response)
-		return mcp.NewToolResultText(string(responseJSON)), nil
-	}
-
-	messages, err := protobufProject.GetMessages()
-	if err != nil {
-		response := &ActivateProjectResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to get messages: %v", err),
-		}
-		responseJSON, _ := json.Marshal(response)
-		return mcp.NewToolResultText(string(responseJSON)), nil
-	}
-
-	enums, err := protobufProject.GetEnums()
-	if err != nil {
-		response := &ActivateProjectResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to get enums: %v", err),
-		}
-		responseJSON, _ := json.Marshal(response)
-		return mcp.NewToolResultText(string(responseJSON)), nil
-	}
-
-	// Count proto files
-	protoFiles := 0
-	if protobufProject.CompiledProtos != nil {
-		protoFiles = len(protobufProject.CompiledProtos)
-	}
-
 	response := &ActivateProjectResponse{
 		Success:     true,
 		Message:     "Project activated successfully",
 		ProjectRoot: absPath,
-		ProtoFiles:  protoFiles,
-		Services:    len(services),
-		Messages:    len(messages),
-		Enums:       len(enums),
 	}
 
 	responseJSON, err := json.Marshal(response)

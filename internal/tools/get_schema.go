@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bufbuild/protocompile/linker"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/yuemori/protobuf-mcp-server/internal/compiler"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -123,18 +124,18 @@ func (t *GetSchemaTool) Handle(ctx context.Context, req mcp.CallToolRequest) (*m
 		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
-	// Check if project is compiled
-	if project.CompiledProtos == nil {
+	files, err := project.CompileProtos(ctx)
+	if err != nil {
 		response := &GetSchemaResponse{
 			Success: false,
-			Message: "Project not compiled. Use activate_project first.",
+			Message: fmt.Sprintf("Failed to compile proto files: %v", err),
 		}
 		responseJSON, _ := json.Marshal(response)
 		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Get schema information
-	schemaInfo, err := t.buildSchemaInfo(project, &params)
+	schemaInfo, err := t.buildSchemaInfo(project, files, &params)
 	if err != nil {
 		response := &GetSchemaResponse{
 			Success: false,
@@ -182,7 +183,7 @@ func (t *GetSchemaTool) matchesType(actualType, filterType string) bool {
 }
 
 // buildSchemaInfo builds detailed schema information from the compiled project
-func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, params *GetSchemaParams) (*SchemaInfo, error) {
+func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, files linker.Files, params *GetSchemaParams) (*SchemaInfo, error) {
 	schemaInfo := &SchemaInfo{
 		Messages: []MessageInfo{},
 		Services: []ServiceInfo{},
@@ -190,7 +191,7 @@ func (t *GetSchemaTool) buildSchemaInfo(project *compiler.ProtobufProject, param
 	}
 
 	// Process each file in the compiled protos
-	for _, file := range project.CompiledProtos {
+	for _, file := range files {
 		// Process messages
 		if t.matchesType("message", params.Type) {
 			for i := 0; i < file.Messages().Len(); i++ {

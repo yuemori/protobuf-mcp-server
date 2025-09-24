@@ -48,7 +48,7 @@ service TestService {
   rpc GetTest(TestMessage) returns (TestMessage);
 }`
 	protoPath := filepath.Join(tempDir, "test.proto")
-	if err := os.WriteFile(protoPath, []byte(protoContent), 0644); err != nil {
+	if err := os.WriteFile(protoPath, []byte(protoContent), 0o644); err != nil {
 		t.Fatalf("Failed to write proto file: %v", err)
 	}
 
@@ -97,18 +97,6 @@ service TestService {
 	if response.ProjectRoot != tempDir {
 		t.Fatalf("Expected ProjectRoot=%s, got %s", tempDir, response.ProjectRoot)
 	}
-
-	if response.ProtoFiles != 1 {
-		t.Fatalf("Expected ProtoFiles=1, got %d", response.ProtoFiles)
-	}
-
-	if response.Services != 1 {
-		t.Fatalf("Expected Services=1, got %d", response.Services)
-	}
-
-	if response.Messages != 1 {
-		t.Fatalf("Expected Messages=1, got %d", response.Messages)
-	}
 }
 
 func TestActivateProjectTool_Handle_InvalidPath(t *testing.T) {
@@ -151,8 +139,8 @@ func TestActivateProjectTool_Handle_InvalidPath(t *testing.T) {
 		t.Fatalf("Expected success=false for invalid path, got success=true")
 	}
 
-	if !strings.Contains(response.Message, "Project not initialized") {
-		t.Fatalf("Expected error message about project not initialized, got: %s", response.Message)
+	if !strings.Contains(response.Message, "Protobuf MCP Server Onboarding") {
+		t.Fatalf("Expected onboarding prompt for invalid path, got: %s", response.Message)
 	}
 }
 

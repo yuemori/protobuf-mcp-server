@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yuemori/protobuf-mcp-server/internal/cli"
 	"github.com/yuemori/protobuf-mcp-server/internal/mcp"
 )
 
@@ -34,14 +33,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	args := os.Args[2:]
-
 	switch command {
-	case "init":
-		if err := cli.InitCommand(args); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
 	case "server":
 		if err := mcp.StartServer(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

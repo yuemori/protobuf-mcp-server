@@ -47,7 +47,7 @@ message TestResponse {
   string message = 1;
 }`
 	protoFile := filepath.Join(tempDir, "test.proto")
-	if err := os.WriteFile(protoFile, []byte(protoContent), 0644); err != nil {
+	if err := os.WriteFile(protoFile, []byte(protoContent), 0o644); err != nil {
 		t.Fatalf("Failed to write proto file: %v", err)
 	}
 
@@ -109,14 +109,6 @@ message TestResponse {
 
 		if !response.Success {
 			t.Fatalf("Expected success=true, got success=false: %s", response.Message)
-		}
-
-		if response.Services != 1 {
-			t.Errorf("Expected 1 service, got %d", response.Services)
-		}
-
-		if response.Messages != 2 {
-			t.Errorf("Expected 2 messages, got %d", response.Messages)
 		}
 	})
 

@@ -66,7 +66,7 @@ func TestListServicesTool_Handle_NoProject(t *testing.T) {
 
 func TestListServicesTool_Handle_Success(t *testing.T) {
 	// Create a test project with real protobuf data
-	project, err := CreateTestProject()
+	project, err := CreateTestProject(t)
 	if err != nil {
 		t.Fatalf("Failed to create test project: %v", err)
 	}

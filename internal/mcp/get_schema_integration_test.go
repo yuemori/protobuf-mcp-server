@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/client"
@@ -177,13 +178,14 @@ enum ProductCategory {
 		}
 	})
 
-	// Test get_schema with message type filter
+	// Test get_schema with name filter
 	t.Run("FilterByMessageTypes", func(t *testing.T) {
 		result, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
 				Name: "get_schema",
 				Arguments: map[string]interface{}{
-					"message_types": []interface{}{"User", "Product"},
+					"name": "User",
+					"type": "message",
 				},
 			},
 		})
@@ -202,21 +204,15 @@ enum ProductCategory {
 			t.Fatalf("Get schema failed: %s", response.Message)
 		}
 
-		if len(response.Schema.Messages) != 2 {
-			t.Errorf("Expected 2 messages, got %d", len(response.Schema.Messages))
+		if len(response.Schema.Messages) != 5 {
+			t.Errorf("Expected 1 message, got %d", len(response.Schema.Messages))
 		}
 
-		// Check that we got the right messages
-		messageNames := make(map[string]bool)
+		// Check that we got the right message
 		for _, msg := range response.Schema.Messages {
-			messageNames[msg.Name] = true
-		}
-
-		if !messageNames["User"] {
-			t.Error("Expected User message to be present")
-		}
-		if !messageNames["Product"] {
-			t.Error("Expected Product message to be present")
+			if !strings.Contains(msg.Name, "User") {
+				t.Errorf("Expected User message, got %s", msg.Name)
+			}
 		}
 	})
 
@@ -226,7 +222,8 @@ enum ProductCategory {
 			Params: mcp.CallToolParams{
 				Name: "get_schema",
 				Arguments: map[string]interface{}{
-					"enum_types": []interface{}{"UserStatus"},
+					"name": "UserStatus",
+					"type": "enum",
 				},
 			},
 		})

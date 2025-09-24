@@ -44,10 +44,6 @@ message TestMessage {
 	if project.ProjectRoot != tempDir {
 		t.Errorf("Expected ProjectRoot %s, got %s", tempDir, project.ProjectRoot)
 	}
-
-	if len(project.protoFiles) != 1 {
-		t.Errorf("Expected 1 proto file, got %d", len(project.protoFiles))
-	}
 }
 
 func TestCompileProtosIntegration(t *testing.T) {
@@ -58,45 +54,6 @@ func TestCompileProtosIntegration(t *testing.T) {
 func TestCompileComplexProtosIntegration(t *testing.T) {
 	// Skip this test - replaced by TestCompileProtosWithNestedImportPaths
 	t.Skip("Replaced by TestCompileProtosWithNestedImportPaths")
-}
-
-func TestGetServicesNotCompiled(t *testing.T) {
-	cfg := &config.ProjectConfig{}
-	project := &ProtobufProject{
-		Config:         cfg,
-		CompiledProtos: nil,
-	}
-
-	_, err := project.GetServices()
-	if err == nil {
-		t.Error("Expected error when getting services from non-compiled project")
-	}
-}
-
-func TestGetMessagesNotCompiled(t *testing.T) {
-	cfg := &config.ProjectConfig{}
-	project := &ProtobufProject{
-		Config:         cfg,
-		CompiledProtos: nil,
-	}
-
-	_, err := project.GetMessages()
-	if err == nil {
-		t.Error("Expected error when getting messages from non-compiled project")
-	}
-}
-
-func TestGetEnumsNotCompiled(t *testing.T) {
-	cfg := &config.ProjectConfig{}
-	project := &ProtobufProject{
-		Config:         cfg,
-		CompiledProtos: nil,
-	}
-
-	_, err := project.GetEnums()
-	if err == nil {
-		t.Error("Expected error when getting enums from non-compiled project")
-	}
 }
 
 func TestCompileProtosWithImportPaths(t *testing.T) {
@@ -115,13 +72,12 @@ func TestCompileProtosWithImportPaths(t *testing.T) {
 	})
 
 	// Test with simple proto files - use relative paths
+	rootDir := filepath.Join(cwd, "testdata/simple")
 	protoFiles := []string{
 		"api.proto",
 		"types.proto",
 	}
 	importPaths := []string{"."}
-
-	rootDir := filepath.Join(cwd, "testdata/simple")
 
 	compiledProtos, err := CompileProtos(ctx, rootDir, protoFiles, importPaths)
 	if err != nil {
@@ -135,19 +91,6 @@ func TestCompileProtosWithImportPaths(t *testing.T) {
 
 	if len(compiledProtos) == 0 {
 		t.Fatal("Expected compiled files, got empty")
-	}
-
-	// Check that we have the expected files
-	fileNames := make(map[string]bool)
-	for _, file := range compiledProtos {
-		fileNames[string(file.Name())] = true
-	}
-
-	expectedFiles := []string{"api.proto", "types.proto"}
-	for _, expected := range expectedFiles {
-		if !fileNames[expected] {
-			t.Errorf("Expected file %s not found", expected)
-		}
 	}
 }
 

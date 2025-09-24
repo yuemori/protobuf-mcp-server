@@ -26,11 +26,9 @@ func getMaxParallelism() int {
 
 // ProtobufProject represents a compiled protobuf project
 type ProtobufProject struct {
-	ProjectRoot    string
-	Config         *config.ProjectConfig
-	CompiledProtos linker.Files
-	resolver       protocompile.Resolver
-	protoFiles     []string
+	ProjectRoot string
+	Config      *config.ProjectConfig
+	resolver    protocompile.Resolver
 }
 
 // NewProtobufProject creates a new ProtobufProject instance
@@ -71,16 +69,19 @@ func NewProtobufProject(projectRoot string, cfg *config.ProjectConfig) (*Protobu
 	resolverWithStdImports := protocompile.WithStandardImports(resolver)
 
 	return &ProtobufProject{
-		ProjectRoot:    projectRoot,
-		Config:         cfg,
-		CompiledProtos: nil,
-		resolver:       resolverWithStdImports,
-		protoFiles:     relativeProtoFiles,
+		ProjectRoot: projectRoot,
+		Config:      cfg,
+		resolver:    resolverWithStdImports,
 	}, nil
 }
 
 // CompileProtos compiles proto files with the given configuration
-func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, importPaths []string) (linker.Files, error) {
+func CompileProtos(ctx context.Context, rootDir string, patterns []string, importPaths []string) (linker.Files, error) {
+	protoFiles, err := config.ResolveProtoFiles(&config.ProjectConfig{ProtoFiles: patterns}, rootDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve proto files: %w", err)
+	}
+
 	if len(protoFiles) == 0 {
 		return nil, fmt.Errorf("no proto files found in configured paths")
 	}
@@ -97,7 +98,7 @@ func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, imp
 	}
 
 	resolver := &protocompile.SourceResolver{
-		ImportPaths: absImportPaths,
+		ImportPaths: importPaths,
 	}
 
 	// Wrap with standard imports for well-known types
@@ -110,14 +111,8 @@ func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, imp
 		SourceInfoMode: protocompile.SourceInfoExtraOptionLocations,
 	}
 
-	var absProtoFiles []string
-
-	for _, file := range protoFiles {
-		absProtoFiles = append(absProtoFiles, filepath.Join(rootDir, file))
-	}
-
 	var relativeProtoFiles []string
-	for _, file := range absProtoFiles {
+	for _, file := range protoFiles {
 		for _, importPath := range absImportPaths {
 			relPath, err := filepath.Rel(importPath, file)
 			if err == nil && !filepath.IsAbs(relPath) && relPath != file {
@@ -127,17 +122,21 @@ func CompileProtos(ctx context.Context, rootDir string, protoFiles []string, imp
 		}
 	}
 
+	if err := os.Chdir(rootDir); err != nil {
+		return nil, fmt.Errorf("failed to change directory to %s: %w", rootDir, err)
+	}
+
 	// Compile all files together - protocompile will resolve dependencies automatically
 	files, err := compiler.Compile(ctx, relativeProtoFiles...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to compile proto files: %w", err)
+		return nil, fmt.Errorf("failed to compile proto files: %s, %s, %s, %w", rootDir, patterns, importPaths, err)
 	}
 
 	return files, nil
 }
 
 // CompileProtos compiles all proto files in the project
-func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
+func (p *ProtobufProject) CompileProtos(ctx context.Context) (linker.Files, error) {
 	// Get import paths from config
 	var importPaths []string
 	for _, importPath := range p.Config.ImportPaths {
@@ -151,31 +150,14 @@ func (p *ProtobufProject) CompileProtos(ctx context.Context) error {
 	}
 
 	// Use the standalone compile function with proto files (already relative)
-	compiledProtos, err := CompileProtos(ctx, p.ProjectRoot, p.protoFiles, importPaths)
-	if err != nil {
-		return err
-	}
-
-	p.CompiledProtos = compiledProtos
-	return nil
-}
-
-func (p *ProtobufProject) GetFileDescriptorSet() (linker.Files, error) {
-	if p.CompiledProtos == nil {
-		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
-	}
-	return p.CompiledProtos, nil
+	return CompileProtos(ctx, p.ProjectRoot, p.Config.ProtoFiles, p.Config.ImportPaths)
 }
 
 // GetServices extracts all services from compiled protos
-func (p *ProtobufProject) GetServices() ([]protoreflect.ServiceDescriptor, error) {
-	if p.CompiledProtos == nil {
-		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
-	}
-
+func (p *ProtobufProject) GetServices(files linker.Files) ([]protoreflect.ServiceDescriptor, error) {
 	var services []protoreflect.ServiceDescriptor
 
-	for _, file := range p.CompiledProtos {
+	for _, file := range files {
 		fileDesc := protoreflect.FileDescriptor(file)
 		for i := 0; i < fileDesc.Services().Len(); i++ {
 			serviceDesc := fileDesc.Services().Get(i)
@@ -187,14 +169,10 @@ func (p *ProtobufProject) GetServices() ([]protoreflect.ServiceDescriptor, error
 }
 
 // GetMessages extracts all messages from compiled protos
-func (p *ProtobufProject) GetMessages() ([]protoreflect.MessageDescriptor, error) {
-	if p.CompiledProtos == nil {
-		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
-	}
-
+func (p *ProtobufProject) GetMessages(files linker.Files) ([]protoreflect.MessageDescriptor, error) {
 	var messages []protoreflect.MessageDescriptor
 
-	for _, file := range p.CompiledProtos {
+	for _, file := range files {
 		fileDesc := protoreflect.FileDescriptor(file)
 		for i := 0; i < fileDesc.Messages().Len(); i++ {
 			messageDesc := fileDesc.Messages().Get(i)
@@ -206,14 +184,10 @@ func (p *ProtobufProject) GetMessages() ([]protoreflect.MessageDescriptor, error
 }
 
 // GetEnums extracts all enums from compiled protos
-func (p *ProtobufProject) GetEnums() ([]protoreflect.EnumDescriptor, error) {
-	if p.CompiledProtos == nil {
-		return nil, fmt.Errorf("project not compiled yet, call CompileProtos first")
-	}
-
+func (p *ProtobufProject) GetEnums(files linker.Files) ([]protoreflect.EnumDescriptor, error) {
 	var enums []protoreflect.EnumDescriptor
 
-	for _, file := range p.CompiledProtos {
+	for _, file := range files {
 		fileDesc := protoreflect.FileDescriptor(file)
 		for i := 0; i < fileDesc.Enums().Len(); i++ {
 			enumDesc := fileDesc.Enums().Get(i)

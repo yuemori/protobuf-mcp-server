@@ -96,7 +96,58 @@ func SaveProjectConfig(projectRoot string, config *ProjectConfig) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// SaveProjectConfigWithComments saves the project configuration with helpful comments
+func SaveProjectConfigWithComments(projectRoot string, config *ProjectConfig) error {
+	configPath := filepath.Join(projectRoot, ".protobuf-mcp.yml")
+
+	// Create configuration content with help comments
+	content := `# .protobuf-mcp.yml
+# Protobuf MCP Server Configuration
+#
+# This file configures how the protobuf MCP server processes your proto files.
+# Please review and update the settings below based on your project structure.
+#
+# protoFiles: List of proto files to compile
+#   - Use glob patterns: "**/*.proto" for all proto files
+#   - Use specific files: "api.proto", "types.proto"
+#   - Use exclusion patterns: "!test/**/*.proto" to exclude test files
+#   - Example: ["**/*.proto", "!test/**/*.proto", "!vendor/**/*.proto"]
+proto_files:
+`
+
+	// Add proto files with proper YAML formatting
+	for _, file := range config.ProtoFiles {
+		content += fmt.Sprintf("  - %q\n", file)
+	}
+
+	content += `
+# importPaths: Additional import paths for proto compilation
+#   - Add directories containing proto dependencies
+#   - Include current directory: "."
+#   - Include vendor directories: "vendor", "third_party"
+#   - Example: [".", "vendor", "third_party"]
+import_paths:
+`
+
+	// Add import paths with proper YAML formatting
+	for _, path := range config.ImportPaths {
+		content += fmt.Sprintf("  - %q\n", path)
+	}
+
+	content += `
+# Optional: Advanced configuration
+# maxParallelism: Maximum number of parallel compilation processes
+# maxParallelism: 4
+`
+
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -146,13 +197,6 @@ func ResolveProtoFiles(config *ProjectConfig, projectRoot string) ([]string, err
 	return resolvedFiles, nil
 }
 
-// resolveRecursivePattern handles ** patterns by walking the directory tree
-// resolveRecursivePattern handles ** patterns by walking the directory tree
-// resolveRecursivePattern handles ** patterns by walking the directory tree
-// resolveRecursivePattern handles ** patterns by walking the directory tree
-// resolveRecursivePattern handles ** patterns by walking the directory tree
-// resolveRecursivePattern handles ** patterns by walking the directory tree
-// resolveRecursivePattern handles ** patterns by walking the directory tree
 // resolveRecursivePattern handles ** patterns by walking the directory tree
 func resolveRecursivePattern(pattern, projectRoot string) ([]string, error) {
 	var matches []string

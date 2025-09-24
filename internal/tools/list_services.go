@@ -51,18 +51,18 @@ func (t *ListServicesTool) Handle(ctx context.Context, req mcp.CallToolRequest) 
 		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
-	// Check if project is compiled
-	if project.CompiledProtos == nil {
+	files, err := project.CompileProtos(ctx)
+	if err != nil {
 		response := &ListServicesResponse{
 			Success: false,
-			Message: "Project not compiled. Use activate_project first.",
+			Message: fmt.Sprintf("Failed to compile proto files: %v", err),
 		}
 		responseJSON, _ := json.Marshal(response)
 		return mcp.NewToolResultText(string(responseJSON)), nil
 	}
 
 	// Get services from compiled protos
-	services, err := project.GetServices()
+	services, err := project.GetServices(files)
 	if err != nil {
 		response := &ListServicesResponse{
 			Success: false,
